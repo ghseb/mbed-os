@@ -86,7 +86,8 @@
        defined(TARGET_STM32F439ZI))
 #define INITIAL_SP              (0x20030000UL)
 
-#elif defined(TARGET_STM32F412ZG)
+#elif defined(TARGET_STM32F412ZG) || \
+       defined(TARGET_STM32F413VG)
 #define INITIAL_SP              (0x20040000UL)
 
 #elif (defined(TARGET_STM32F413ZH) ||\

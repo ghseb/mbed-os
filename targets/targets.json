@@ -3579,5 +3579,25 @@
         "device_has_add": ["LOWPOWERTIMER", "SERIAL_ASYNCH", "SERIAL_FC", "FLASH"],
         "release_versions": ["2"],
         "device_name": "STM32F411RE"
+    },
+	"STM32F413VG": {
+        "supported_form_factors": ["ARDUINO", "MORPHO"],
+        "core": "Cortex-M4F",
+        "default_toolchain": "ARM",
+        "extra_labels_add": ["STM", "STM32F4", "STM32F413xG", "STM32F413VG"],
+        "config": {
+            "clock_source": {
+                "help": "Mask value : USE_PLL_HSE_EXTC | USE_PLL_HSE_XTAL (need HW patch) | USE_PLL_HSI",
+                "value": "USE_PLL_HSE_XTAL",
+                "macro_name": "CLOCK_SOURCE"
+            }
+        },
+        "supported_toolchains": ["IAR", "ARM", "GCC_ARM"],
+        "inherits": ["FAMILY_STM32"],
+        "detect_code": ["0826"],
+        "macros_add": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USB_STM_HAL", "USBHOST_OTHER"],
+        "device_has_add": ["ANALOGIN", "ERROR_RED", "I2C", "I2CSLAVE", "I2C_ASYNCH", "INTERRUPTIN", "LOWPOWERTIMER", "PORTIN", "PORTINOUT", "PORTOUT", "PWMOUT", "RTC", "SERIAL", "SERIAL_ASYNCH", "SERIAL_FC", "SLEEP", "SPI", "SPISLAVE", "SPI_ASYNCH", "STDIO_MESSAGES", "TRNG"],
+        "release_versions": ["2", "5"],
+        "device_name": "STM32F413VG"
     }
 }

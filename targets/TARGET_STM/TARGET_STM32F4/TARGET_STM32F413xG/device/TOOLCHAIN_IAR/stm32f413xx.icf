@@ -1,0 +1,211 @@
+/* *** IAR (icf)linker file for the firmware inside STM32F413VG *** */
+//
+//     CSTACK: 32kByte
+//     HEAP:   128kByte
+
+//              
+//                     SRAM1 description (256kByte)
+//      0x2003FFFF      -------------------------       CSTACK start      
+//      SRAM1 end       |                   |   |
+//                      |       CSTACK      |   |
+//                      |       grows       |   |       
+//                      |       down        |   |		32kByte (min. 2kByte for Micropython)
+//						|                   |   |
+//      0x20038000      |                   v   |		CSTACK end
+//                      |-----------------------|                
+//      0x20037FFF      |                   ^   |      	HEAP end 
+//                      |                   |   |
+//                      |                   |   |
+//                      |       HEAP        |   |      
+//                      |       grows       |   |
+//                      |       up          |   |		128kByte (min. 16kByte for Micropython)
+//                      |                   |   |
+//                      |                   |   |
+//      0x20018000      |                   |   |		HEAP start
+//                      |-----------------------|
+//      0x20017FFF      |                       |
+//                      |        BSS segment    |		96kByte-472Byte 
+//                      |                       |
+// 						|        Data segment   |
+//                      |                       |
+// 						|                       |
+//                      |                       |
+//		0x200001D8		|                       |
+//                      |-----------------------|
+//      0x200001D7      |          				|                      
+//						|Interrupt Vector Table |	     472Byte reserved to copy IVT
+//                      |                       |
+//      0x20000000      |-----------------------|         
+//      SRAM1 start
+//                      
+//	
+//	
+//
+//		The SRAM2 should be mapped at the address range: 0x10000000 to 0x1000FFFF.
+//
+//                      SRAM2 description (64kByte)
+//      0x2004FFFF      -------------------------            
+//      SRAM2 end       |                      	|                  
+//      (0x1000FFFF)    |                      	|
+//                      |                		|
+//                      |       reserved        |
+//                      |                       |		
+//                      |                       |
+//                      |                       |      	
+//                      |                  		|
+//                      |                      	|
+//                      |                      	|
+//                      |                      	|
+//                      |						|                
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//      0x20040000      |                       |
+//      (0x10000000)    -------------------------
+//      SRAM2 start
+//
+//
+//
+//
+//                      ROM description (internal flash memory 1MByte)
+//      0x080FFFFF      -------------------------            
+//      ROM end       	|CRC32, firmware version|                  
+//                      |                      	|
+//                      |                		|
+//                      |                   	|      	
+//                      |                  		|
+//                      |                      	|
+//                      |                      	|
+//                      |                      	|
+//                      |						|                
+//                      |                       | 
+//                      |            			|
+//                      | mbed +                |		
+//                      | Micropython +         |		992kByte-472Byte
+//                      | and more      	    |      
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                  	    |       
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//      0x080081D8      |                       |
+//                      |-----------------------|
+//      0x080081D7      |                       |  
+//                      |Interrupt Vector Table |	     472Byte	
+//      0x08008000      |                       |
+//                      |---------------------- |
+//      0x08007FFF      |CRC32                  |
+//                      |						|
+//                      |                       |
+//                      | Bootloader OpenBlt    |		 32kByte
+//                      |                       |
+//                      |                       |
+//      0x08000000      -------------------------
+//      ROM start
+//
+//
+//
+//               	  QuadSPI-NOR-Flash description
+//                    (MT25QU128ABA with a size of 16MByte)                 			 
+//      0x90FFFFFF      -------------------------            
+//      QuadSPI end     |						|                  
+//                      |                      	|
+//                      |                		|
+//                      |                   	|      	
+//                      |                  		|
+//                      |                      	|
+//                      |                      	|
+//                      |                      	|
+//                      |						|                
+//                      |                       | 
+//                      |            			|
+//                      |                       |		
+//                      | Flash File System     |
+//                      |       			    |      
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                  	    |       
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |						|
+//                      |                       |
+//                      |                       |	
+//                      |                       |
+//                      |                       |
+//      0x90000000      -------------------------
+//      QuadSPI start
+//
+//
+/* **************************************************************** */
+
+/* [ROM = 1024MByte = 0x100000] */
+/* Interrupt Vector Table */
+define symbol __intvec_start__     = 0x08008000;
+
+define symbol __region_ROM_start__ = 0x08008000;
+define symbol __region_ROM_end__   = 0x080FFFFF;
+
+/* [SRAM = 320kByte = 0x50000 consists of SRAM1 = 256kByte = 0x40000 and SRAM2 = 64kByte = 0x10000] */  
+/* Vector table dynamic copy: 118 vectors = 472 bytes (0x1D8) to be reserved in SRAM1 */   
+define symbol __NVIC_start__          	= 0x20000000;
+define symbol __NVIC_end__            	= 0x200001D7; 	/* Aligned on 8 bytes --> is ok */
+define symbol __region_SRAM1_start__  	= 0x200001D8;
+define symbol __region_SRAM1_end__      = 0x2003FFFF;
+/* SRAM2 is currently not in use */
+define symbol __region_SRAM2_start__    = 0x20040000;
+define symbol __region_SRAM2_end__      = 0x2004FFFF;
+define symbol __region_RAM_end__ 		= __region_SRAM1_end__; 
+export symbol __region_RAM_end__;     	/* used for micropython gc_collect_root */
+
+/* [QSPI_FLASH = 16MByte = 0x1000000] */
+define symbol __region_QSPI_FLASH_start__    = 0x90000000;
+define symbol __region_QSPI_FLASH_end__      = 0x90FFFFFF;
+
+
+/* Memory regions */
+define memory mem with size = 4G;
+define region ROM_region = mem:[from __region_ROM_start__ to __region_ROM_end__];
+define region SRAM1_region = mem:[from __region_SRAM1_start__ to __region_SRAM1_end__];
+define region SRAM2_region = mem:[from __region_SRAM2_start__ to __region_SRAM2_end__];
+define region QSPI_FLASH_region = mem:[from __region_QSPI_FLASH_start__ to __region_QSPI_FLASH_end__];
+
+
+/* Stack and Heap */	
+define symbol __size_cstack__ = 0x8000;										/* CSTACK: 32kByte = 0x8000 */	
+define symbol __size_heap__   = 0x20000;									/* HEAP:   128kByte = 0x20000 */
+define block CSTACK    with alignment = 8, size = __size_cstack__   { };
+define block HEAP      with alignment = 8, size = __size_heap__     { };
+define block HEAPSTACK with fixed order { block HEAP, block CSTACK };
+
+
+/* handle initialization */
+/* initialize rw sections during copy from ROM to RAM, also move the interrupt vector table to address 0x08008000 */
+initialize by copy with packing = zeros { readwrite };
+do not initialize  { section .noinit };										/* do not initialise zero-init data */	             		
+
+place at address mem:__intvec_start__ { readonly section .intvec };			/* place startup code at address 0x08008000 */
+place at address mem: 0x080FFFF0 {readonly section .fwversioninfo};     	/* place the firmware version string in front of the checksum */
+place at address mem: 0x080FFFFC {readonly section .checksum};        		/* place the four byte long checksum at the end of the internal flash */
+place in ROM_region   	{ readonly };										/* place constants, initializers and code in ROM: .rodata, .data_init, .text */
+place at end of SRAM1_region {block HEAPSTACK};								/* place heap and stack at the end of SRAM1 */
+place at start of SRAM1_region {readwrite};									/* place .data, .bss, and .noinit, (readwrite) normally here */
+place in SRAM2_region { };													/* reserved */
+place in QSPI_FLASH_region { };
+
+
+
