@@ -36,7 +36,7 @@ class Eclipse(Makefile):
         self.gen_file('cdt/necessary_software.tmpl', ctx,
                       join('eclipse-extras','necessary_software.p2f'))
 
-        self.gen_file('cdt/.cproject.tmpl', ctx, '.cproject')
+        self.gen_file('cdt/.cproject_iar.tmpl', ctx, '.cproject')
         self.gen_file('cdt/.project.tmpl', ctx, '.project')
 
 

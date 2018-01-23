@@ -250,7 +250,7 @@ class Armc6(Arm):
 class IAR(Makefile):
     """IAR specific makefile target"""
     NAME = 'Make-IAR'
-    TEMPLATE = 'make-iar'
+    TEMPLATE = 'm2m-make-iar'
     TOOLCHAIN = "IAR"
     LINK_SCRIPT_OPTION = "--config"
     USER_LIBRARY_FLAG = "-L"
