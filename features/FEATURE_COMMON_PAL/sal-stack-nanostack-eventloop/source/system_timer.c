@@ -281,7 +281,7 @@ int8_t eventOS_event_timer_request(uint8_t event_id, uint8_t event_type, int8_t 
         .sender = 0,
         .data_ptr = NULL,
         .event_data = 0,
-        .priority = ARM_LIB_MED_PRIORITY_EVENT,
+        .priority = ARM_LIB_HIGH_PRIORITY_EVENT,
     };
 
     // Legacy time behaviour preserved
