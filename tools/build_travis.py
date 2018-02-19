@@ -54,6 +54,7 @@ build_list = [
         { "target": "NUCLEO_F412ZG",     "toolchains": "GCC_ARM", "libs": ["dsp"] },
         { "target": "NUCLEO_F413ZH",     "toolchains": "GCC_ARM", "libs": ["dsp", "usb"] },
         { "target": "NUCLEO_L432KC",     "toolchains": "GCC_ARM", "libs": ["dsp"] },
+        { "target": "WISE_1510",         "toolchains": "GCC_ARM", "libs": ["dsp"] },
         { "target": "NUCLEO_L476RG",     "toolchains": "GCC_ARM", "libs": ["dsp"] },
         { "target": "NUCLEO_L011K4",     "toolchains": "GCC_ARM", "libs": ["dsp"] },
         { "target": "NUCLEO_L031K6",     "toolchains": "GCC_ARM", "libs": ["dsp"] },
@@ -175,7 +176,8 @@ build_list = [
     {
         "RENESAS":
         (
-            { "target": "RZ_A1H", "toolchains": "GCC_ARM" },
+            { "target": "RZ_A1H",    "toolchains": "GCC_ARM" },
+            { "target": "GR_LYCHEE", "toolchains": "GCC_ARM" },
         )
     }
 ]
@@ -347,6 +349,12 @@ linking_list = [
         (
             {
              "target": "RZ_A1H",
+             "toolchains": "GCC_ARM",
+             "tests": {""     : ["MBED_2", "MBED_10", "MBED_11", "MBED_16"],
+                      }
+            },
+            {
+             "target": "GR_LYCHEE",
              "toolchains": "GCC_ARM",
              "tests": {""     : ["MBED_2", "MBED_10", "MBED_11", "MBED_16"],
                       }
