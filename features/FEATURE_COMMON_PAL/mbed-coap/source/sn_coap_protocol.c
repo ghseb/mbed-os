@@ -1703,7 +1703,7 @@ static sn_coap_hdr_s *sn_coap_handle_blockwise_message(struct coap_s *handle, sn
                 !sn_coap_protocol_linked_list_blockwise_payload_compare_block_number(handle,
                                                                                      src_addr_ptr,
                                                                                      block_number)) {
-                blocks_in_order = false;
+//                blocks_in_order = false;
             }
 
             sn_coap_protocol_linked_list_blockwise_payload_store(handle,
