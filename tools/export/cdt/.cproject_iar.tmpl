@@ -334,6 +334,7 @@
 									{% for symbol in asm_symbols %}
                                     <listOptionValue builtIn="false" value="{{symbol}}"/>
                                     {% endfor %}
+                                    <listOptionValue builtIn="false" value="__ICCARM__"/>
 								</option>
 								<option defaultValue="iar.arm.toolchain.compiler.option.language.cpp.v6.1.0" id="iar.arm.toolchain.compiler.option.language.v6.1.0.2027886442" name="Language" superClass="iar.arm.toolchain.compiler.option.language.v6.1.0" valueType="enumerated"/>
 								<option defaultValue="true" id="iar.arm.toolchain.compiler.option.optCSE.v5.4.0.526730213" name="Disable common subexpression elimination" superClass="iar.arm.toolchain.compiler.option.optCSE.v5.4.0" valueType="boolean"/>
@@ -357,6 +358,7 @@
 									{% for symbol in c_symbols %}
                                     <listOptionValue builtIn="false" value="{{symbol}}"/>
                                     {% endfor %}
+                                    <listOptionValue builtIn="false" value="__ICCARM__"/>
 								</option>
 								<inputType id="iar.arm.toolchain.assembler.inputType.asmFile.v5.4.0.751127589" name="IAR Assembler input type for ARM (asm, s)" superClass="iar.arm.toolchain.assembler.inputType.asmFile.v5.4.0"/>
 							</tool>
