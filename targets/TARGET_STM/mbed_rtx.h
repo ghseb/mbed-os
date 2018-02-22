@@ -68,10 +68,13 @@
 #define INITIAL_SP              (0x20014000UL)
 
 #elif (defined(TARGET_STM32F401RE) ||\
+       defined(TARGET_STM32L471VG) ||\
+       defined(TARGET_STM32L471RG) ||\
        defined(TARGET_STM32L475VG) ||\
        defined(TARGET_STM32L476RG) ||\
        defined(TARGET_STM32L476JG) ||\
        defined(TARGET_STM32L476VG) ||\
+       defined(TARGET_STM32L486ZG) ||\
        defined(TARGET_STM32L486RG))
 #define INITIAL_SP              (0x20018000UL)
 
@@ -93,6 +96,7 @@
 #define INITIAL_SP              (0x20040000UL)
 
 #elif (defined(TARGET_STM32F413ZH) ||\
+       defined(TARGET_STM32F413VG) ||\
        defined(TARGET_STM32F469NI) ||\
        defined(TARGET_STM32F746NG) ||\
        defined(TARGET_STM32F746ZG) ||\
