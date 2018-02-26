@@ -127,7 +127,8 @@ typedef enum {
 	USBRX = PA_3,
 
 	// Not connected
-	NC = (int)0xFFFFFFFF
+	NC = (int)0xFFFFFFFF,
+	LED1 = NC
 } PinName;
 
 #ifdef __cplusplus
