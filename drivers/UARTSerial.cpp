@@ -235,6 +235,19 @@ void UARTSerial::wake()
     }
 }
 
+void UARTSerial::start()
+{
+	SerialBase::attach(callback(this, &UARTSerial::rx_irq), RxIrq);
+}
+
+void UARTSerial::stop()
+{
+	SerialBase::attach(NULL, RxIrq);
+	SerialBase::attach(NULL, TxIrq);
+	_rxbuf.reset();
+	_txbuf.reset();
+}
+
 short UARTSerial::poll(short events) const {
 
     short revents = 0;

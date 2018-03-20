@@ -58,6 +58,18 @@ public:
     UARTSerial(PinName tx, PinName rx, int baud = MBED_CONF_PLATFORM_DEFAULT_SERIAL_BAUD_RATE);
     virtual ~UARTSerial();
 
+    /** Start the serial communication
+     *
+     * Attach RxIrq.
+     */
+    void start();
+
+    /** Stop the serial communication
+     *
+     * Detach RxIrq/TxIrq and clear buffers. This unblocks deepsleep.
+	 */
+    void stop();
+
     /** Equivalent to POSIX poll(). Derived from FileHandle.
      *  Provides a mechanism to multiplex input/output over a set of file handles.
      */
