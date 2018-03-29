@@ -36,8 +36,8 @@ from tools.build_api import merge_build_data
 from tools.targets import TARGET_MAP
 from tools.utils import mkdir, ToolException, NotSupportedException, args_error
 from tools.test_exporters import ReportExporter, ResultExporterType
-from utils import argparse_filestring_type, argparse_lowercase_type, argparse_many
-from utils import argparse_dir_not_parent
+from tools.utils import argparse_filestring_type, argparse_lowercase_type, argparse_many
+from tools.utils import argparse_dir_not_parent
 from tools.toolchains import mbedToolchain, TOOLCHAIN_PATHS, TOOLCHAIN_CLASSES
 from tools.settings import CLI_COLOR_MAP
 
