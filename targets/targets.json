@@ -3835,6 +3835,18 @@
         "release_versions": ["2", "5"],
         "device_name": "STM32L4A6RG"
     },
+    "STM32L4A6VG": {
+        "inherits": ["Target"],
+        "core": "Cortex-M4F",
+        "default_toolchain": "ARM",
+        "extra_labels": ["STM", "STM32L4", "STM32L4A6xG", "STM32L4A6VG"],
+        "supported_toolchains": ["ARM", "uARM", "IAR", "GCC_ARM"],
+        "detect_code": ["0820"],
+        "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER", "CLOCK_SOURCE=4"],
+        "device_has": ["ANALOGIN", "ANALOGOUT", "I2C", "I2CSLAVE", "I2C_ASYNCH", "INTERRUPTIN", "LOWPOWERTIMER", "PORTIN", "PORTINOUT", "PORTOUT", "PWMOUT", "RTC", "SERIAL", "SERIAL_FC", "SLEEP", "SPI", "SPISLAVE", "SPI_ASYNCH", "STDIO_MESSAGES", "TRNG"],
+        "release_versions": ["2", "5"],
+        "device_name": "STM32L4A6VG"
+    },
 	"STM32L471VG": {
         "inherits": ["Target"],
         "core": "Cortex-M4F",
