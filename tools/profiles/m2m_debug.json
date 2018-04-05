@@ -40,6 +40,6 @@
         "asm": [],
         "c": ["--vla"],
         "cxx": ["--guard_calls", "--no_static_destruction"],
-        "ld": ["--skip_dynamic_initialization", "--threaded_lib", "--map M2M_Platform.map", "--enable_stack_usage", "--place_holder __checksum,4,.checksum,4", "--keep __checksum"]
+        "ld": ["--skip_dynamic_initialization", "--threaded_lib", "--enable_stack_usage", "--place_holder __checksum,4,.checksum,4", "--keep __checksum"]
     }
 }
