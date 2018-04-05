@@ -104,7 +104,7 @@ static uint8_t *thread_mdns_txt_record_sb_get(int interface_id, uint8_t *buf, ui
         state_bitmap |= 0x02<<3;
 
         /* Availability
-         * 1: High availability – The Border Agent device and its Thread interface are part of stable, always-on network infrastructure
+         * 1: High availability The Border Agent device and its Thread interface are part of stable, always-on network infrastructure
          * */
         state_bitmap |= THREAD_MDNS_TXT_SB_AVAILABILITY_HIGH;
     } else {
