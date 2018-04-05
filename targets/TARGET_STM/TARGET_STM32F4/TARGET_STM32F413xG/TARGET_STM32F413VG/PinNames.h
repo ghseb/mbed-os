@@ -188,6 +188,7 @@ typedef enum {
     NC = (int)0xFFFFFFFF,
 	LED_RED		= NC,
 	LED1		= NC,
+	LED2		= NC,
 } PinName;
 
 #ifdef __cplusplus
