@@ -165,11 +165,16 @@ typedef enum {
     ADC_VREF = 0xF1,
     ADC_VBAT = 0xF2,
 
-    USBTX = PC_12,
-    USBRX = PD_2,
+    USBTX = PA_2,
+    USBRX = PA_3,
 
     // Not connected
     NC = (int)0xFFFFFFFF,
+	LED_RED		= NC,
+	LED1		= NC,
+	LED2		= NC,
+	LED3		= NC,
+	LED4		= NC,
 } PinName;
 
 #ifdef __cplusplus
