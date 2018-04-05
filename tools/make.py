@@ -48,9 +48,9 @@ from tools.build_api import mcu_toolchain_matrix
 from tools.build_api import mcu_toolchain_list
 from tools.build_api import mcu_target_list
 from tools.build_api import merge_build_data
-from utils import argparse_filestring_type
-from utils import argparse_many
-from utils import argparse_dir_not_parent
+from tools.utils import argparse_filestring_type
+from tools.utils import argparse_many
+from tools.utils import argparse_dir_not_parent
 from tools.toolchains import mbedToolchain, TOOLCHAIN_CLASSES, TOOLCHAIN_PATHS
 from tools.settings import CLI_COLOR_MAP
 
