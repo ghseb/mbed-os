@@ -128,7 +128,10 @@ typedef enum {
 
 	// Not connected
 	NC = (int)0xFFFFFFFF,
-	LED1 = NC
+	LED1 = NC,
+	LED2 = NC,
+	LED3 = NC,
+	LED4 = NC,
 } PinName;
 
 #ifdef __cplusplus
