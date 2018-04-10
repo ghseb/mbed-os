@@ -84,7 +84,7 @@
 
 #elif (defined(TARGET_STM32F401RE) ||\
        defined(TARGET_STM32L471VG) ||\
-       defined(TARGET_STM32F401VE))
+       defined(TARGET_STM32F401VE) ||\
        defined(TARGET_STM32L471RG) ||\
 	   defined(TARGET_STM32L4A6RG) ||\
 	   defined(TARGET_STM32L4A6VG) ||\
