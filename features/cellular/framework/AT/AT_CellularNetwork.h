@@ -24,6 +24,7 @@
 
 namespace mbed {
 
+#define IMEI_BUFFER_SIZE (16)
 #define AT_NETWORK_TRIALS 5
 
 /**
@@ -80,6 +81,8 @@ public: // CellularNetwork
     virtual nsapi_error_t set_blocking(bool blocking);
 
     virtual const char *get_ip_address();
+
+    virtual const char *get_imei();
 
     virtual nsapi_error_t set_access_technology(operator_t::RadioAccessTechnology op_rat);
 
@@ -164,6 +167,7 @@ protected:
     RegistrationType _last_reg_type;
     nsapi_connection_status_t _connect_status;
     bool _new_context_set;
+    char _imei[IMEI_BUFFER_SIZE];
 };
 
 } // namespace mbed

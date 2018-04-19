@@ -333,6 +333,8 @@ public:
      */
     virtual nsapi_ip_stack_t get_stack_type() = 0;
 
+    virtual const char* get_imei() = 0;
+
     /** Get the relevant information for an active non secondary PDP context.
      *
      *  @remark optional params are not updated if not received from network.
