@@ -327,7 +327,7 @@ nsapi_error_t AT_CellularNetwork::set_context_to_be_activated()
 
     // if user has defined user name and password we need to call CGAUTH before activating or modifying context
     if (_pwd && _uname) {
-        _at.cmd_start("AT+CGAUTH=");
+        _at.cmd_start("AT^SGAUTH=");
         _at.write_int(_cid);
         _at.write_int(_authentication_type);
         _at.write_string(_uname);
