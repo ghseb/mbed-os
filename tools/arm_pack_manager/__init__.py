@@ -1,10 +1,16 @@
-from urllib2 import urlopen, URLError
+try:
+    from urllib2 import urlopen, URLError
+except ImportError:
+    from urllib.request import urlopen, URLError
 from bs4 import BeautifulSoup
 from os.path import join, dirname, basename
 from os import makedirs
 from errno import EEXIST
 from threading import Thread
-from Queue import Queue
+try:
+    from Queue import Queue
+except ImportError:
+    from queue import Queue
 from re import compile, sub
 from sys import stderr, stdout
 from itertools import takewhile
@@ -157,10 +163,18 @@ class Cache () :
         """
         try:
             pack = self.pack_from_cache(device)
-            algo_itr = (pack.open(path) for path in device['algorithm'].keys())
-            algo_bin = algo_itr.next()
-            flm_file = algo_bin.read()
-            return PackFlashAlgo(flm_file).sector_sizes
+            ret = []
+            for filename in device['algorithm'].keys():
+                try:
+                    flm = pack.open(filename)
+                    flash_alg = PackFlashAlgo(flm.read())
+                    sectors = [(flash_alg.flash_start + offset, size)
+                               for offset, size in flash_alg.sector_sizes]
+                    ret.extend(sectors)
+                except Exception:
+                    pass
+            ret.sort(key=lambda sector: sector[0])
+            return ret
         except Exception:
             return None
 
