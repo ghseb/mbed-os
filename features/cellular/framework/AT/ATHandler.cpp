@@ -936,7 +936,7 @@ const char* ATHandler::mem_str(const char* dest, size_t dest_len, const char* sr
 
 void ATHandler::cmd_start(const char* cmd)
 {
-    tr_debug("AT> %s", cmd);
+    at_debug("AT> %s", cmd);
 
     if (_last_err != NSAPI_ERROR_OK) {
         return;
@@ -949,7 +949,7 @@ void ATHandler::cmd_start(const char* cmd)
 
 void ATHandler::write_int(int32_t param)
 {
-    tr_debug("write_int: %d", param);
+	at_debug("write_int: %d", param);
     // do common checks before sending subparameter
     if (check_cmd_send() == false) {
         return;
@@ -966,7 +966,7 @@ void ATHandler::write_int(int32_t param)
 
 void ATHandler::write_string(const char* param, bool useQuotations)
 {
-    tr_debug("write_string: %s, %d", param, useQuotations);
+	at_debug("write_string: %s, %d", param, useQuotations);
     // do common checks before sending subparameter
     if (check_cmd_send() == false) {
         return;
