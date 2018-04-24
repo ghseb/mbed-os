@@ -41,7 +41,7 @@ AT_CellularNetwork::AT_CellularNetwork(ATHandler &atHandler) : AT_CellularBase(a
     _connection_status_cb(NULL), _op_act(operator_t::RAT_UNKNOWN), _authentication_type(CHAP), _last_reg_type(C_REG),
     _connect_status(NSAPI_STATUS_DISCONNECTED), _new_context_set(false)
 {
-	_imei[0] = '\0';
+	 _imei[0] = '\0';
     _at.set_urc_handler("NO CARRIER", callback(this, &AT_CellularNetwork::urc_no_carrier));
 }
 
@@ -749,22 +749,46 @@ const char *AT_CellularNetwork::get_ip_address()
 #endif
 }
 
+bool AT_CellularNetwork::_validate_imei()
+{
+	if(strlen(_imei) > IMEI_SIZE)
+	{
+		return false;
+	}
+
+	for(int i=0; i<strlen(_imei); ++i)
+	{
+		if(_imei[i] < '0' || _imei[i] > '9')
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+
 const char * AT_CellularNetwork::get_imei()
 {
 	if(strlen(_imei) == 0)
 	{
-		_at.lock();
-		_at.cmd_start("AT+CGSN");
-		_at.cmd_stop();
-		_at.resp_start();
-		_at.read_string(_imei, IMEI_BUFFER_SIZE);
-		_at.resp_stop();
-
-		if(_at.unlock_return_error() != NSAPI_ERROR_OK)
+		while(1)
 		{
-			return NULL;
+			_at.lock();
+			_at.cmd_start("AT+CGSN");
+			_at.cmd_stop();
+			_at.resp_start();
+			ssize_t size = _at.read_string(_imei, IMEI_SIZE);
+			_at.resp_stop();
+			if(_at.unlock_return_error() == NSAPI_ERROR_OK &&
+					size == IMEI_SIZE)
+			{
+				_imei[IMEI_SIZE] = '\0';
+				if(_validate_imei())
+				{
+					return _imei;
+				}
+			}
 		}
-		_imei[IMEI_BUFFER_SIZE-1] = '\0';
 	}
 	return _imei;
 }
@@ -1108,3 +1132,4 @@ nsapi_error_t AT_CellularNetwork::get_operator_params(int &format, operator_t &o
 
     return _at.unlock_return_error();
 }
+

@@ -24,7 +24,7 @@
 
 namespace mbed {
 
-#define IMEI_BUFFER_SIZE (16)
+#define IMEI_SIZE (15)
 #define AT_NETWORK_TRIALS 5
 
 /**
@@ -146,6 +146,7 @@ private:
     bool set_new_context(int cid);
     nsapi_error_t set_registration_urc(bool on);
     nsapi_error_t delete_current_context();
+    bool _validate_imei();
 
 #if NSAPI_PPP_AVAILABLE
     void ppp_status_cb(nsapi_event_t, intptr_t);
@@ -167,7 +168,7 @@ protected:
     RegistrationType _last_reg_type;
     nsapi_connection_status_t _connect_status;
     bool _new_context_set;
-    char _imei[IMEI_BUFFER_SIZE];
+    char _imei[IMEI_SIZE +1];
 };
 
 } // namespace mbed
