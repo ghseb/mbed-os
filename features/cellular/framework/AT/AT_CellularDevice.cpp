@@ -246,5 +246,5 @@ NetworkStack *AT_CellularDevice::get_stack()
 
 events::EventQueue *AT_CellularDevice::get_queue()
 {
-	return _queue;
+	return &_queue;
 }
