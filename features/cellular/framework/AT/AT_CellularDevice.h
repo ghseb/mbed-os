@@ -81,7 +81,7 @@ public: // CellularDevice
 
     virtual NetworkStack *get_stack();
 
-    virtual events::EventQueue *get_queue() = 0;
+    virtual events::EventQueue *get_queue();
 
 protected:
     AT_CellularNetwork *_network;
