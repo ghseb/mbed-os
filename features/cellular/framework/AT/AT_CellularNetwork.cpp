@@ -39,8 +39,9 @@ static const at_reg_t at_reg[] = {
 AT_CellularNetwork::AT_CellularNetwork(ATHandler &atHandler) : AT_CellularBase(atHandler),
     _stack(NULL), _apn(NULL), _uname(NULL), _pwd(NULL), _ip_stack_type_requested(DEFAULT_STACK), _ip_stack_type(DEFAULT_STACK), _cid(-1),
     _connection_status_cb(NULL), _op_act(operator_t::RAT_UNKNOWN), _authentication_type(CHAP), _last_reg_type(C_REG),
-    _connect_status(NSAPI_STATUS_DISCONNECTED), _new_context_set(false), _imei("")
+    _connect_status(NSAPI_STATUS_DISCONNECTED), _new_context_set(false)
 {
+	 _imei[0] = '\0';
     _at.set_urc_handler("NO CARRIER", callback(this, &AT_CellularNetwork::urc_no_carrier));
 }
 
