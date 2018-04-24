@@ -26,6 +26,7 @@
 #include "CellularPower.h"
 #include "CellularInformation.h"
 #include "NetworkStack.h"
+#include "EventQueue.h"
 
 namespace mbed
 {
@@ -116,6 +117,12 @@ public:
      *  @return network stack
      */
     virtual NetworkStack *get_stack() = 0;
+
+    /** Get event queue.
+     *
+     *  @return event queue
+     */
+    virtual events::EventQueue *get_queue() = 0;
 };
 
 } // namespace mbed
