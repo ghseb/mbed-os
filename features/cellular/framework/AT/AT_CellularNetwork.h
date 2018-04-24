@@ -24,7 +24,8 @@
 
 namespace mbed {
 
-#define IMEI_BUFFER_SIZE (16)
+#define IMEI_BUFFER_SIZE (20)
+#define IMEI_SIZE (15)
 #define AT_NETWORK_TRIALS 5
 
 /**
