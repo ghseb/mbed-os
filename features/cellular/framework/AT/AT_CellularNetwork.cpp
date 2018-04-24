@@ -749,11 +749,16 @@ const char *AT_CellularNetwork::get_ip_address()
 #endif
 }
 
-bool only_ascii_numbers(char *string)
+bool AT_CellularNetwork::_validate_imei()
 {
-	for(int i=0; i<strlen(string); ++i)
+	if(strlen(_imei) > IMEI_SIZE)
 	{
-		if(string[i] < '0' || string[i] > '9')
+		return false;
+	}
+
+	for(int i=0; i<strlen(_imei); ++i)
+	{
+		if(_imei[i] < '0' || _imei[i] > '9')
 		{
 			return false;
 		}
@@ -764,7 +769,6 @@ bool only_ascii_numbers(char *string)
 
 const char * AT_CellularNetwork::get_imei()
 {
-	nsapi_error_t error = NSAPI_ERROR_DEVICE_ERROR;
 	if(strlen(_imei) == 0)
 	{
 		while(1)
@@ -773,13 +777,13 @@ const char * AT_CellularNetwork::get_imei()
 			_at.cmd_start("AT+CGSN");
 			_at.cmd_stop();
 			_at.resp_start();
-			ssize_t size = _at.read_string(_imei, IMEI_BUFFER_SIZE);
+			ssize_t size = _at.read_string(_imei, IMEI_SIZE);
 			_at.resp_stop();
 			if(_at.unlock_return_error() == NSAPI_ERROR_OK &&
-					size > IMEI_SIZE)
+					size == IMEI_SIZE)
 			{
 				_imei[IMEI_SIZE] = '\0';
-				if(only_ascii_numbers(_imei))
+				if(_validate_imei())
 				{
 					return _imei;
 				}
@@ -1128,3 +1132,4 @@ nsapi_error_t AT_CellularNetwork::get_operator_params(int &format, operator_t &o
 
     return _at.unlock_return_error();
 }
+
