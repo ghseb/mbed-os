@@ -128,3 +128,17 @@ nsapi_error_t AT_CellularSIM::get_imsi(char* imsi)
     _at.resp_stop();
     return _at.unlock_return_error();
 }
+
+nsapi_error_t AT_CellularSIM::get_ccid(char* ccid_buf, size_t buf_size)
+{
+	_at.lock();
+	_at.cmd_start("AT+CCID");
+	_at.cmd_stop();
+	_at.resp_start("+CCID:");
+	int len = _at.read_string(ccid_buf, buf_size);
+	if (len > 0) {
+		ccid_buf[len] = '\0';
+	}
+	_at.resp_stop();
+	return _at.unlock_return_error();
+}
