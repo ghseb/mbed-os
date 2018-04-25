@@ -19,6 +19,7 @@
 #define CELLULAR_SIM_H_
 
 #include "nsapi_types.h"
+#include <stddef.h>
 
 namespace mbed {
 
@@ -85,6 +86,13 @@ public:
      *  @return         zero on success
      */
     virtual nsapi_error_t get_imsi(char* imsi) = 0;
+
+    /** Get CCID from the sim card
+     *
+     *  @param ccid     preallocated char* which after successful request contains ccid
+     *  @return         zero on success
+     */
+    virtual nsapi_error_t get_ccid(char* ccid, size_t buf_size) = 0;
 };
 
 } // namespace mbed
