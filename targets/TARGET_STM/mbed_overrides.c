@@ -49,6 +49,6 @@ void mbed_sdk_init()
 
     /* Configure the System clock source, PLL Multiplier and Divider factors,
        AHB/APBx prescalers and Flash settings */
-    SetSysClock();
+    //SetSysClock();
     SystemCoreClockUpdate();
 }
