@@ -506,85 +506,55 @@ static bool convert_crlf(int fd) {
 #endif
 }
 
-#if defined(__ICCARM__)
-extern "C" size_t    __write (int        fh, const unsigned char *buffer, size_t length) {
-#else
-extern "C" int PREFIX(_write)(FILEHANDLE fh, const unsigned char *buffer, unsigned int length, int mode) {
-#endif
-
-#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
-    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
-        error("Error - writing to a file in an ISR or critical section\r\n");
-    }
-#endif
-
-    if (length > SSIZE_MAX) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    ssize_t slength = length;
-    ssize_t written = 0;
-
-    if (convert_crlf(fh)) {
-        // local prev is previous in buffer during seek
-        // stdio_out_prev[fh] is last thing actually written
-        char prev = stdio_out_prev[fh];
-        // Seek for '\n' without preceding '\r'; if found flush
-        // preceding and insert '\r'. Continue until end of input.
-        for (ssize_t cur = 0; cur < slength; cur++) {
-            if (buffer[cur] == '\n' && prev != '\r') {
-                ssize_t r;
-                // flush stuff preceding the \n
-                if (cur > written) {
-                    r = write(fh, buffer + written, cur - written);
-                    if (r < 0) {
-                        return -1;
-                    }
-                    written += r;
-                    if (written < cur) {
-                        // For some reason, didn't write all - give up now
-                        goto finish;
-                    }
-                    stdio_out_prev[fh] = prev;
-                }
-                // insert a \r now, leaving the \n still to be written
-                r = write(fh, "\r", 1);
-                if (r < 0) {
-                    return -1;
-                }
-                if (r < 1) {
-                    goto finish;
-                }
-                stdio_out_prev[fh] = '\r';
-            }
-            prev = buffer[cur];
-        }
-    }
-
-    // Flush remaining from conversion, or the whole thing if no conversion
-    if (written < slength) {
-        ssize_t r = write(fh, buffer + written, slength - written);
-        if (r < 0) {
-            return -1;
-        }
-        written += r;
-        if (written > 0) {
-            stdio_out_prev[fh] = buffer[written - 1];
-        }
-    }
-
-finish:
-#ifdef __ARMCC_VERSION
-    if (written >= 0) {
-        return slength - written;
-    } else {
-        return written;
-    }
-#else
-    return written;
-#endif
-}
+//#if defined(__ICCARM__)
+//extern "C" size_t    __write (int        fh, const unsigned char *buffer, size_t length) {
+//#else
+//extern "C" int PREFIX(_write)(FILEHANDLE fh, const unsigned char *buffer, unsigned int length, int mode) {
+//#endif
+//    int n; // n is the number of bytes written
+//
+//#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
+//    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
+//        error("Error - writing to a file in an ISR or critical section\r\n");
+//    }
+//#endif
+//
+//    if (fh < 3) {
+//#if DEVICE_SERIAL
+//        if (!stdio_uart_inited) init_serial();
+//#if MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES
+//        for (unsigned int i = 0; i < length; i++) {
+//            if (buffer[i] == '\n' && stdio_out_prev != '\r') {
+//                 serial_putc(&stdio_uart, '\r');
+//            }
+//            serial_putc(&stdio_uart, buffer[i]);
+//            stdio_out_prev = buffer[i];
+//        }
+//#else
+//        for (unsigned int i = 0; i < length; i++) {
+//            serial_putc(&stdio_uart, buffer[i]);
+//        }
+//#endif
+//#endif
+//        n = length;
+//    } else {
+//        FileHandle* fhc = filehandles[fh-3];
+//        if (fhc == NULL) {
+//            errno = EBADF;
+//            return -1;
+//        }
+//
+//        n = fhc->write(buffer, length);
+//        if (n < 0) {
+//            errno = -n;
+//        }
+//    }
+//#ifdef __ARMCC_VERSION
+//    return length-n;
+//#else
+//    return n;
+//#endif
+//}
 
 extern "C" ssize_t write(int fh, const void *buf, size_t length) {
 
@@ -614,67 +584,65 @@ extern "C" void _ttywrch(int ch) {
 }
 #endif
 
-#if defined(__ICCARM__)
-extern "C" size_t    __read (int        fh, unsigned char *buffer, size_t       length) {
-#else
-extern "C" int PREFIX(_read)(FILEHANDLE fh, unsigned char *buffer, unsigned int length, int mode) {
-#endif
-
-#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
-    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
-        error("Error - reading from a file in an ISR or critical section\r\n");
-    }
-#endif
-
-    if (length > SSIZE_MAX) {
-        errno = EINVAL;
-        return -1;
-    }
-
-    ssize_t bytes_read = 0;
-
-    if (convert_crlf(fh)) {
-        while (true) {
-            char c;
-            ssize_t r = read(fh, &c, 1);
-            if (r < 0) {
-                return -1;
-            }
-            if (r == 0) {
-                return bytes_read;
-            }
-            if ((c == '\r' && stdio_in_prev[fh] != '\n') ||
-                (c == '\n' && stdio_in_prev[fh] != '\r')) {
-                stdio_in_prev[fh] = c;
-                *buffer = '\n';
-                break;
-            } else if ((c == '\r' && stdio_in_prev[fh] == '\n') ||
-                       (c == '\n' && stdio_in_prev[fh] == '\r')) {
-                stdio_in_prev[fh] = c;
-                continue;
-            } else {
-                stdio_in_prev[fh] = c;
-                *buffer = c;
-                break;
-            }
-        }
-        bytes_read = 1;
-    } else {
-        bytes_read = read(fh, buffer, length);
-    }
-
-#ifdef __ARMCC_VERSION
-    if (bytes_read < 0) {
-        return -1;
-    } else if (bytes_read == 0) {
-        return 0x80000000 | length; // weird EOF indication
-    } else {
-        return (ssize_t)length - bytes_read;
-    }
-#else
-    return bytes_read;
-#endif
-}
+//#if defined(__ICCARM__)
+//extern "C" size_t    __read (int        fh, unsigned char *buffer, size_t       length) {
+//#else
+//extern "C" int PREFIX(_read)(FILEHANDLE fh, unsigned char *buffer, unsigned int length, int mode) {
+//#endif
+//    int n; // n is the number of bytes read
+//
+//#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
+//    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
+//        error("Error - reading from a file in an ISR or critical section\r\n");
+//    }
+//#endif
+//
+//    if (fh < 3) {
+//        // only read a character at a time from stdin
+//#if DEVICE_SERIAL
+//        if (!stdio_uart_inited) init_serial();
+//#if MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES
+//        while (true) {
+//            char c = serial_getc(&stdio_uart);
+//            if ((c == '\r' && stdio_in_prev != '\n') ||
+//                (c == '\n' && stdio_in_prev != '\r')) {
+//                stdio_in_prev = c;
+//                *buffer = '\n';
+//                break;
+//            } else if ((c == '\r' && stdio_in_prev == '\n') ||
+//                       (c == '\n' && stdio_in_prev == '\r')) {
+//                stdio_in_prev = c;
+//                // onto next character
+//                continue;
+//            } else {
+//                stdio_in_prev = c;
+//                *buffer = c;
+//                break;
+//            }
+//        }
+//#else
+//        *buffer = serial_getc(&stdio_uart);
+//#endif
+//#endif
+//        n = 1;
+//    } else {
+//        FileHandle* fhc = filehandles[fh-3];
+//        if (fhc == NULL) {
+//            errno = EBADF;
+//            return -1;
+//        }
+//
+//        n = fhc->read(buffer, length);
+//        if (n < 0) {
+//            errno = -n;
+//        }
+//    }
+//#ifdef __ARMCC_VERSION
+//    return length-n;
+//#else
+//    return n;
+//#endif
+//}
 
 extern "C" ssize_t read(int fh, void *buf, size_t length) {
 
