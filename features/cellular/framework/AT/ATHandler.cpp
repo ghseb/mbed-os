@@ -716,17 +716,6 @@ void ATHandler::at_error(bool error_code_expected, DeviceErrorType error_type)
 
 void ATHandler::resp(const char *prefix, bool check_urc)
 {
-	if(prefix)
-	{
-		tr_debug("%s: %s", __func__, prefix);
-	}
-
-    at_debug("\n----------resp buff:----------\n");
-    for (size_t i = _recv_pos; i < _recv_len; i++) {
-        at_debug("%c", _recv_buff[i]);
-    }
-    at_debug("\n----------buff----------\n");
-
     _prefix_matched = false;
     _urc_matched = false;
     _error_found = false;
@@ -781,11 +770,6 @@ void ATHandler::resp(const char *prefix, bool check_urc)
 
 void ATHandler::resp_start(const char *prefix, bool stop)
 {
-	if(prefix)
-	{
-		tr_debug("%s: %s", __func__, prefix);
-	}
-
     if (_last_err) {
         return;
     }
