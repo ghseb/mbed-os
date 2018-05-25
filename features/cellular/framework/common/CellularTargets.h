@@ -31,6 +31,14 @@ namespace mbed {
 #define CELLULAR_DEVICE UBLOX_PPP
 #elif TARGET_UBLOX_C027
 #define CELLULAR_DEVICE UBLOX_PPP
+#elif TARGET_STM32F413VG
+#define MDMTXD PD_8
+#define MDMRXD PD_9
+#define CELLULAR_DEVICE CINTERION_ELS61
+#elif TARGET_STM32L471VG
+#define MDMTXD PD_8
+#define MDMRXD PD_9
+#define CELLULAR_DEVICE QUECTEL_MC60
 #else
 //#error Cellular target not defined, see cellular/targets.h
 //#define CELLULAR_TARGET <target-modem>

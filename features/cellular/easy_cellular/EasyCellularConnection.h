@@ -115,6 +115,13 @@ public:
      */
     virtual const char *get_gateway();
 
+    /** Get the imei
+     *
+     *  @return         Null-terminated representation of the imei
+     *                  or null if the imei could not be read
+     */
+    virtual const char *get_imei();
+
     /** Register callback for status reporting
      *
      *  The specified status callback function will be called on status changes

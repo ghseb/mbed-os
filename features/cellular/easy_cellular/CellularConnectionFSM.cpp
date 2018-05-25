@@ -75,20 +75,24 @@ CellularConnectionFSM::~CellularConnectionFSM()
 
 void CellularConnectionFSM::stop()
 {
-    tr_info("CellularConnectionUtil::stop");
-    if (_cellularDevice) {
-        _cellularDevice->close_power();
-        _cellularDevice->close_network();
-        _cellularDevice->close_sim();
-        _power = NULL;
-        _network = NULL;
-        _sim = NULL;
-    }
+    _queue.cancel(_event_id);
+    _queue.break_dispatch();
+
     if (_queue_thread) {
         _queue_thread->terminate();
         delete _queue_thread;
         _queue_thread = NULL;
     }
+
+    delete _cellularDevice;
+    _cellularDevice = NULL;
+    // _cellularDevice closes all interfaces in destructor
+    _power = NULL;
+    _network = NULL;
+    _sim = NULL;
+
+    _state = STATE_INIT;
+    _next_state = _state;
 }
 
 nsapi_error_t CellularConnectionFSM::init()
@@ -105,6 +109,7 @@ nsapi_error_t CellularConnectionFSM::init()
         stop();
         return NSAPI_ERROR_NO_MEMORY;
     }
+
     _network = _cellularDevice->open_network(_serial);
     if (!_network) {
         stop();
@@ -367,6 +372,7 @@ nsapi_error_t CellularConnectionFSM::continue_from_state(CellularState state)
 
 nsapi_error_t CellularConnectionFSM::continue_to_state(CellularState state)
 {
+    MBED_ASSERT(_cellularDevice);
     _retry_count = 0;
     if (state < _state) {
         _state = state;
@@ -654,8 +660,13 @@ void CellularConnectionFSM::set_callback(mbed::Callback<bool(int, int)> status_c
 
 void CellularConnectionFSM::attach(mbed::Callback<void(nsapi_event_t, intptr_t)> status_cb)
 {
+    MBED_ASSERT(_network);
     _event_status_cb = status_cb;
-    _network->attach(callback(this, &CellularConnectionFSM::network_callback));
+    if (status_cb) {
+        _network->attach(callback(this, &CellularConnectionFSM::network_callback));
+    } else {
+        _network->attach(NULL);
+    }
 }
 
 void CellularConnectionFSM::network_callback(nsapi_event_t ev, intptr_t ptr)

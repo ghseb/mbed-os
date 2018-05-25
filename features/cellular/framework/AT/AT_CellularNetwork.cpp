@@ -49,6 +49,19 @@ AT_CellularNetwork::AT_CellularNetwork(ATHandler &atHandler) : AT_CellularBase(a
 
 AT_CellularNetwork::~AT_CellularNetwork()
 {
+#if NSAPI_PPP_AVAILABLE
+    (void)disconnect();
+#else
+    delete _stack;
+#endif // NSAPI_PPP_AVAILABLE
+
+    for (int type = 0; type < CellularNetwork::C_MAX; type++) {
+        if (has_registration((RegistrationType)type)) {
+            _at.remove_urc_handler(at_reg[type].urc_prefix, _urc_funcs[type]);
+        }
+    }
+
+    _at.remove_urc_handler("NO CARRIER", callback(this, &AT_CellularNetwork::urc_no_carrier));
     free_credentials();
 }
 
@@ -460,7 +473,7 @@ bool AT_CellularNetwork::set_new_context(int cid)
             strncpy(pdp_type, "IPV6", sizeof(pdp_type));
             break;
         case IPV4V6_STACK:
-            strncpy(pdp_type, "IPV4V6", sizeof(pdp_type));
+            strncpy(pdp_type, "IPV6", sizeof(pdp_type)); // try first IPV6 and then fall-back to IPv4
             break;
         default:
             break;
@@ -881,7 +894,7 @@ const char * AT_CellularNetwork::get_imei()
 			ssize_t size = _at.read_string(_imei, IMEI_SIZE);
 			_at.resp_stop();
 			if(_at.unlock_return_error() == NSAPI_ERROR_OK &&
-					size == IMEI_SIZE)
+					size == IMEI_SIZE - 1)
 			{
 				_imei[IMEI_SIZE] = '\0';
 				if(_validate_imei())
