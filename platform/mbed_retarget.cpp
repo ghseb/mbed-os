@@ -1081,11 +1081,21 @@ extern "C" void exit(int return_code) {
         semihost_exit();
     }
 #endif
+
+#ifdef SIMULATION
+    int end = 0x1000000; 	//INT_MAX / 2;
+    for (int ii = 0; ii < end;)
+    {
+    	ii += 1;
+    }
+    _Exit(return_code);
+#else
     if (return_code) {
         mbed_die();
     }
 
     while (1);
+#endif
 }
 
 #if !defined(TOOLCHAIN_GCC_ARM) && !defined(TOOLCHAIN_GCC_CR)
