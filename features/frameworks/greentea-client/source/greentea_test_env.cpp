@@ -20,7 +20,11 @@
 #include <string.h>
 #include "mbed.h"
 #include "greentea-client/test_env.h"
+#ifdef	SIMULATION
+#include "greentea_serial_simulation.h"
+#else
 #include "greentea-client/greentea_serial.h"
+#endif
 #include "greentea-client/greentea_metrics.h"
 
 
