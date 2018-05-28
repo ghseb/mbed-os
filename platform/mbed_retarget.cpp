@@ -506,55 +506,57 @@ static bool convert_crlf(int fd) {
 #endif
 }
 
-//#if defined(__ICCARM__)
-//extern "C" size_t    __write (int        fh, const unsigned char *buffer, size_t length) {
-//#else
-//extern "C" int PREFIX(_write)(FILEHANDLE fh, const unsigned char *buffer, unsigned int length, int mode) {
-//#endif
-//    int n; // n is the number of bytes written
-//
-//#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
-//    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
-//        error("Error - writing to a file in an ISR or critical section\r\n");
-//    }
-//#endif
-//
-//    if (fh < 3) {
-//#if DEVICE_SERIAL
-//        if (!stdio_uart_inited) init_serial();
-//#if MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES
-//        for (unsigned int i = 0; i < length; i++) {
-//            if (buffer[i] == '\n' && stdio_out_prev != '\r') {
-//                 serial_putc(&stdio_uart, '\r');
-//            }
-//            serial_putc(&stdio_uart, buffer[i]);
-//            stdio_out_prev = buffer[i];
-//        }
-//#else
-//        for (unsigned int i = 0; i < length; i++) {
-//            serial_putc(&stdio_uart, buffer[i]);
-//        }
-//#endif
-//#endif
-//        n = length;
-//    } else {
-//        FileHandle* fhc = filehandles[fh-3];
-//        if (fhc == NULL) {
-//            errno = EBADF;
-//            return -1;
-//        }
-//
-//        n = fhc->write(buffer, length);
-//        if (n < 0) {
-//            errno = -n;
-//        }
-//    }
-//#ifdef __ARMCC_VERSION
-//    return length-n;
-//#else
-//    return n;
-//#endif
-//}
+#ifndef SIMULATION
+#if defined(__ICCARM__)
+extern "C" size_t    __write (int        fh, const unsigned char *buffer, size_t length) {
+#else
+extern "C" int PREFIX(_write)(FILEHANDLE fh, const unsigned char *buffer, unsigned int length, int mode) {
+#endif
+    int n; // n is the number of bytes written
+
+#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
+    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
+        error("Error - writing to a file in an ISR or critical section\r\n");
+    }
+#endif
+
+    if (fh < 3) {
+#if DEVICE_SERIAL
+        if (!stdio_uart_inited) init_serial();
+#if MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES
+        for (unsigned int i = 0; i < length; i++) {
+            if (buffer[i] == '\n' && stdio_out_prev != '\r') {
+                 serial_putc(&stdio_uart, '\r');
+            }
+            serial_putc(&stdio_uart, buffer[i]);
+            stdio_out_prev = buffer[i];
+        }
+#else
+        for (unsigned int i = 0; i < length; i++) {
+            serial_putc(&stdio_uart, buffer[i]);
+        }
+#endif
+#endif
+        n = length;
+    } else {
+        FileHandle* fhc = filehandles[fh-3];
+        if (fhc == NULL) {
+            errno = EBADF;
+            return -1;
+        }
+
+        n = fhc->write(buffer, length);
+        if (n < 0) {
+            errno = -n;
+        }
+    }
+#ifdef __ARMCC_VERSION
+    return length-n;
+#else
+    return n;
+#endif
+}
+#endif 	/*SIMULATION */
 
 extern "C" ssize_t write(int fh, const void *buf, size_t length) {
 
