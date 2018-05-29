@@ -4156,6 +4156,17 @@
         "core": "Cortex-M4F",
         "default_toolchain": "ARM",
         "extra_labels": ["STM", "STM32L4", "STM32L471xG", "STM32L471VG"],
+        "config": {
+            "clock_source": {
+                "help": "Mask value : USE_PLL_HSE_EXTC | USE_PLL_HSE_XTAL (need HW patch) | USE_PLL_HSI",
+                "value": "USE_PLL_HSE_XTAL",
+                "macro_name": "CLOCK_SOURCE"
+            },
+           	"lpticker_lptim": {
+                "help": "This target supports LPTIM. Set value 1 to use LPTIM for LPTICKER, or 0 to use RTC wakeup timer",
+                "value": 1
+            }
+        },
         "supported_toolchains": ["ARM", "uARM", "IAR", "GCC_ARM"],
         "detect_code": ["0820"],
         "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER", "CLOCK_SOURCE=4", "RTC_LSI"],
