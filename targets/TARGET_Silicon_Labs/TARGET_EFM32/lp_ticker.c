@@ -125,6 +125,7 @@ void lp_ticker_free()
         CMU_ClockEnable(cmuClock_RTC, false);
         rtc_inited = false;
     }
+    RTC_FreezeEnable(false);
 }
 
 void lp_ticker_set_interrupt(timestamp_t timestamp)

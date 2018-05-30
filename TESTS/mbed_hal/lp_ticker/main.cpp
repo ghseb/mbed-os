@@ -63,7 +63,7 @@ void overflow_protect()
 void ticker_event_handler_stub(const ticker_data_t * const ticker)
 {
     /* Indicate that ISR has been executed in interrupt context. */
-    if (IS_IRQ_MODE()) {
+    if (IsIrqMode()) {
         intFlag++;
     }
 
@@ -82,7 +82,7 @@ void lp_ticker_info_test()
 {
     const ticker_info_t* p_ticker_info = lp_ticker_get_info();
 
-    TEST_ASSERT(p_ticker_info->frequency >= 8000);
+    TEST_ASSERT(p_ticker_info->frequency >= 4000);
     TEST_ASSERT(p_ticker_info->frequency <= 64000);
     TEST_ASSERT(p_ticker_info->bits >= 12);
 }

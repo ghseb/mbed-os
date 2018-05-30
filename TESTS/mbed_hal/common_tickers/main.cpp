@@ -117,7 +117,7 @@ void ticker_event_handler_stub(const ticker_data_t * const ticker)
     }
 
     /* Indicate that ISR has been executed in interrupt context. */
-    if (IS_IRQ_MODE()) {
+    if (IsIrqMode()) {
         intFlag++;
     }
 }
@@ -344,29 +344,44 @@ void ticker_increment_test(void)
     } else {  // high frequency tickers
 
         uint32_t num_of_cycles = NUM_OF_CYCLES;
+        const uint32_t repeat_count = 20;
+        const uint32_t max_inc_val = 100;
 
-        const uint32_t base_tick_count = count_ticks(num_of_cycles, 1);
+        uint32_t base_tick_count = count_ticks(num_of_cycles, 1);
         uint32_t next_tick_count = base_tick_count;
         uint32_t inc_val = 0;
+        uint32_t repeat_cnt = 0;
 
-        while (inc_val < 100) {
+        while (inc_val < max_inc_val) {
             next_tick_count = count_ticks(num_of_cycles + inc_val, 1);
 
             if (next_tick_count == base_tick_count) {
-                /* Same tick count, so increase num of cycles. */
-                inc_val++;
+
+                /* Same tick count, so repeat 20 times and than
+                 * increase num of cycles by 1.
+                 */
+                if (repeat_cnt == repeat_count) {
+                    inc_val++;
+                    repeat_cnt = 0;
+                }
+
+                repeat_cnt++;
             } else {
+                /* Check if we got 1 tick diff. */
+                if (next_tick_count - base_tick_count == 1 ||
+                    base_tick_count - next_tick_count == 1) {
+                    break;
+                }
+
                 /* It is possible that the difference between base and next
                  * tick count on some platforms is greater that 1, in this case we need
                  * to repeat counting with the reduced number of cycles (for slower boards).
                  * In cases if difference is exactly 1 we can exit the loop.
                  */
                 num_of_cycles /= 2;
-
-                if (next_tick_count - base_tick_count == 1 ||
-                    base_tick_count - next_tick_count == 1) {
-                    break;
-                }
+                inc_val = 0;
+                repeat_cnt = 0;
+                base_tick_count = count_ticks(num_of_cycles, 1);
             }
         }
 
@@ -443,6 +458,8 @@ utest::v1::status_t us_ticker_setup(const Case *const source, const size_t index
 {
     intf = get_us_ticker_data()->interface;
 
+    OS_Tick_Disable();
+
     intf->init();
 
     prev_irq_handler = set_us_ticker_irq_handler(ticker_event_handler_stub);
@@ -459,6 +476,8 @@ utest::v1::status_t us_ticker_teardown(const Case * const source, const size_t p
 
     prev_irq_handler = NULL;
 
+    OS_Tick_Enable();
+
     return greentea_case_teardown_handler(source, passed, failed, reason);
 }
 
@@ -466,6 +485,8 @@ utest::v1::status_t us_ticker_teardown(const Case * const source, const size_t p
 utest::v1::status_t lp_ticker_setup(const Case *const source, const size_t index_of_case)
 {
     intf = get_lp_ticker_data()->interface;
+
+    OS_Tick_Disable();
 
     intf->init();
 
@@ -482,6 +503,8 @@ utest::v1::status_t lp_ticker_teardown(const Case * const source, const size_t p
     set_lp_ticker_irq_handler(prev_irq_handler);
 
     prev_irq_handler = NULL;
+
+    OS_Tick_Enable();
 
     return greentea_case_teardown_handler(source, passed, failed, reason);
 }

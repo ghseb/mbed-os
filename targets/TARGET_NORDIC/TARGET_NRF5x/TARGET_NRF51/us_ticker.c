@@ -36,14 +36,15 @@
  *
  */
 
+#include "us_ticker.h"
+
 #include "us_ticker_api.h"
 #include "nrf_timer.h"
 #include "app_util_platform.h"
 #include "nrf_drv_common.h"
 #include "mbed_critical.h"
-#include "us_ticker.h"
 
-static bool us_ticker_initialized = false;
+bool us_ticker_initialized = false;
 
 /* us ticker is driven by 1MHz clock and counter length is 16 bits. */
 const ticker_info_t* us_ticker_get_info()
