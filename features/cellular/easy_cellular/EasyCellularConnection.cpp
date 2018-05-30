@@ -300,7 +300,7 @@ const char *EasyCellularConnection::get_gateway()
 
 const char *EasyCellularConnection::get_imei()
 {
-	CellularNetwork *network = _cellularConnectionFSM.get_network();
+	CellularNetwork *network = _cellularConnectionFSM->get_network();
 	if (!network) {
 		return NULL;
 	}
