@@ -84,6 +84,8 @@ void CellularConnectionFSM::stop()
         _queue_thread = NULL;
     }
 
+    _power->off();
+
     delete _cellularDevice;
     _cellularDevice = NULL;
     // _cellularDevice closes all interfaces in destructor
