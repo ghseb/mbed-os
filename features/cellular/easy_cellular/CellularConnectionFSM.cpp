@@ -59,11 +59,11 @@ CellularConnectionFSM::CellularConnectionFSM() :
     _retry_timeout_array[2] = 4;
     _retry_timeout_array[3] = 8;
     _retry_timeout_array[4] = 16;
-    _retry_timeout_array[5] = 32;
-    _retry_timeout_array[6] = 64;
-    _retry_timeout_array[7] = 128; // if around two minutes was not enough then let's wait much longer
-    _retry_timeout_array[8] = 600;
-    _retry_timeout_array[9] = TIMEOUT_NETWORK_MAX;
+    _retry_timeout_array[5] = 16;
+    _retry_timeout_array[6] = 16;
+    _retry_timeout_array[7] = 16; // if around two minutes was not enough then let's wait much longer
+    _retry_timeout_array[8] = 16;
+    _retry_timeout_array[9] = 16;
     _retry_array_length = MAX_RETRY_ARRAY_SIZE;
 }
 
