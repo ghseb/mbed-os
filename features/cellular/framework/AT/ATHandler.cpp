@@ -124,6 +124,9 @@ ATHandler::~ATHandler()
     if (_output_delimiter) {
         delete [] _output_delimiter;
     }
+
+    _fileHandle->sigio(NULL);
+	_fh_sigio_set = false;
 }
 
 void ATHandler::inc_ref_count()
