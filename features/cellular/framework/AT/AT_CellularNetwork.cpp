@@ -53,6 +53,7 @@ AT_CellularNetwork::~AT_CellularNetwork()
     (void)disconnect();
 #else
     delete _stack;
+    _stack = NULL;
 #endif // NSAPI_PPP_AVAILABLE
 
     for (int type = 0; type < CellularNetwork::C_MAX; type++) {
