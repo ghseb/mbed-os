@@ -71,6 +71,8 @@ public:
                                   const char *uname = 0,
                                   const char *pwd = 0);
 
+    nsapi_error_t cancel();
+
     /** Start the interface
      *
      *  Attempts to connect to a Cellular network.
@@ -164,6 +166,7 @@ private:
 
     bool _is_connected;
     bool _is_initialized;
+    bool _cancel;
 #if USE_APN_LOOKUP
     bool _credentials_set;
 #endif // #if USE_APN_LOOKUP

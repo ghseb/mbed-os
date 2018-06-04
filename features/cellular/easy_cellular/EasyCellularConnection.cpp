@@ -40,6 +40,14 @@ bool EasyCellularConnection::cellular_status(int state, int next_state)
     tr_info("cellular_status: %s ==> %s", _cellularConnectionFSM->get_state_string((CellularConnectionFSM::CellularState)state),
             _cellularConnectionFSM->get_state_string((CellularConnectionFSM::CellularState)next_state));
 
+    if(_cancel)
+    {
+    	_cancel = false;
+    	tr_warn("Canceled");
+		MBED_ASSERT(_cellularSemaphore.release() == osOK);
+    	return false;
+    }
+
     if (_target_state == state) {
         tr_info("Target state reached: %s", _cellularConnectionFSM->get_state_string(_target_state));
         MBED_ASSERT(_cellularSemaphore.release() == osOK);
@@ -65,7 +73,7 @@ void EasyCellularConnection::network_callback(nsapi_event_t ev, intptr_t ptr)
 EasyCellularConnection::EasyCellularConnection(bool debug) :
         _is_connected(false), _is_initialized(false), _target_state(CellularConnectionFSM::STATE_POWER_ON), _cellularSerial(
                 MDMTXD, MDMRXD, MBED_CONF_PLATFORM_DEFAULT_SERIAL_BAUD_RATE), _cellularSemaphore(0), _cellularConnectionFSM(0), _credentials_err(
-                NSAPI_ERROR_OK), _status_cb(0)
+                NSAPI_ERROR_OK), _status_cb(0), _cancel(false)
 {
     tr_info("EasyCellularConnection()");
 #if USE_APN_LOOKUP
@@ -86,6 +94,7 @@ EasyCellularConnection::~EasyCellularConnection()
 nsapi_error_t EasyCellularConnection::init()
 {
     nsapi_error_t err = NSAPI_ERROR_OK;
+//    _cellularSerial.start();
     if (!_is_initialized) {
 #if defined (MDMRTS) && defined (MDMCTS)
         _cellularSerial.set_flow_control(SerialBase::RTSCTS, MDMRTS, MDMCTS);
@@ -104,6 +113,11 @@ nsapi_error_t EasyCellularConnection::init()
     }
 
     return err;
+}
+
+nsapi_error_t EasyCellularConnection::cancel()
+{
+	_cancel = true;
 }
 
 void EasyCellularConnection::set_credentials(const char *apn, const char *uname, const char *pwd)
@@ -250,6 +264,8 @@ nsapi_error_t EasyCellularConnection::disconnect()
         delete _cellularConnectionFSM;
         _cellularConnectionFSM = NULL;
     }
+
+//    _cellularSerial.stop();
 
     return err;
 }
