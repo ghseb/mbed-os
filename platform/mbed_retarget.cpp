@@ -1085,11 +1085,11 @@ extern "C" void exit(int return_code) {
 #endif
 
 #ifdef SIMULATION
-    int end = 0x1000000; 	//INT_MAX / 2;
-    for (int ii = 0; ii < end;)
-    {
-    	ii += 1;
-    }
+//    int end = 0x10000; 	//INT_MAX / 2; 0x10000;
+//    for (int ii = 0; ii < end;)
+//    {
+//    	ii += 1;
+//    }
     _Exit(return_code);
 #else
     if (return_code) {
