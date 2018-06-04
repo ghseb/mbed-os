@@ -567,14 +567,16 @@ void CellularConnectionFSM::event()
         if (_next_state != _state) { // state exit condition
             tr_info("Cellular state from %s to %s", get_state_string((CellularConnectionFSM::CellularState)_state),
                     get_state_string((CellularConnectionFSM::CellularState)_next_state));
-            if (_status_callback) {
-                if (!_status_callback(_state, _next_state)) {
-                    return;
-                }
-            }
         } else {
             tr_info("Cellular event in %d seconds", _event_timeout);
         }
+
+        if (_status_callback) {
+			if (!_status_callback(_state, _next_state)) {
+				return;
+			}
+		}
+
         _state = _next_state;
         if (_event_timeout == -1) {
             _event_timeout = 0;
