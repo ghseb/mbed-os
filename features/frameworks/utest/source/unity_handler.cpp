@@ -19,7 +19,11 @@
 #include "utest/utest_harness.h"
 #include "utest/utest_stack_trace.h"
 #include "utest/unity_handler.h"
+#ifdef	SIMULATION
+#include "greentea_serial_simulation.h"
+#else
 #include "greentea-client/greentea_serial.h"
+#endif
 
 void utest_unity_assert_failure(void)
 {

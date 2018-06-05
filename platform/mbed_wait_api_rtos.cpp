@@ -33,6 +33,10 @@ void wait_ms(int ms) {
 }
 
 void wait_us(int us) {
+#ifdef SIMULATION
+	for (int ii = 0; ii < us;)
+		ii += 1;
+#else
     const ticker_data_t *const ticker = get_us_ticker_data();
 
     uint32_t start = ticker_read(ticker);
@@ -46,6 +50,7 @@ void wait_us(int us) {
     // Use busy waiting for sub-millisecond delays, or for the whole
     // interval if interrupts are not enabled
     while ((ticker_read(ticker) - start) < (uint32_t)us);
+#endif
 }
 
 #endif // #if MBED_CONF_RTOS_PRESENT

@@ -11,8 +11,8 @@ class GreenteaSerial : public mbed::RawSerial {
 public:
     GreenteaSerial();
 };
+#endif
 
 extern SingletonPtr<GreenteaSerial> greentea_serial;
-#endif
 
 /** @}*/

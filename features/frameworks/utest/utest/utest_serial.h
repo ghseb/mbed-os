@@ -22,7 +22,11 @@
 #ifndef UTEST_SERIAL_H
 #define UTEST_SERIAL_H
 
+#ifdef	SIMULATION
+#include "greentea_serial_simulation.h"
+#else
 #include "greentea-client/greentea_serial.h"
+#endif
 
 #define utest_printf(...) greentea_serial->printf(__VA_ARGS__)
 
