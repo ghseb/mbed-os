@@ -184,6 +184,7 @@ protected:
 private:
 
     void set_error(nsapi_error_t err);
+    void _process_oob();
 
     events::EventQueue &_queue;
     nsapi_error_t _last_err;

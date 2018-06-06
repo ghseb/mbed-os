@@ -273,6 +273,12 @@ void ATHandler::restore_at_timeout()
 void ATHandler::process_oob()
 {
     lock();
+    _process_oob();
+    unlock();
+}
+
+void ATHandler::_process_oob()
+{
     tr_debug("process_oob readable=%d, pos=%u, len=%u", _fileHandle->readable(), _recv_pos,  _recv_len);
     if (_fileHandle->readable() || (_recv_pos < _recv_len)) {
         _current_scope = NotSet;
@@ -296,7 +302,6 @@ void ATHandler::process_oob()
         _at_timeout = timeout;
     }
     tr_debug("process_oob exit");
-    unlock();
 }
 
 void ATHandler::set_filehandle_sigio()
@@ -970,6 +975,7 @@ void ATHandler::cmd_start(const char *cmd)
 
     if (_at_send_delay) {
         rtos::Thread::wait_until(_last_response_stop + _at_send_delay);
+        _process_oob();
     }
 
     if (_last_err != NSAPI_ERROR_OK) {
