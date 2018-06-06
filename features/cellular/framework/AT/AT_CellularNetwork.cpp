@@ -383,13 +383,16 @@ nsapi_error_t AT_CellularNetwork::disconnect()
     }
     return err;
 #else
-    _at.lock();
-    _at.cmd_start("AT+CGACT=0,");
-    _at.write_int(_cid);
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
-    _at.restore_at_timeout();
+    if(_cid >= 0)
+    {
+		_at.lock();
+		_at.cmd_start("AT+CGACT=0,");
+		_at.write_int(_cid);
+		_at.cmd_stop();
+		_at.resp_start();
+		_at.resp_stop();
+		_at.restore_at_timeout();
+    }
 
     _connect_status = NSAPI_STATUS_DISCONNECTED;
     if (_connection_status_cb) {
