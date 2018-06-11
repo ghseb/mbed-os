@@ -530,6 +530,7 @@ static bool convert_crlf(int fd) {
 #endif
 }
 
+#ifndef SIMULATION
 #if defined(__ICCARM__)
 extern "C" size_t    __write (int        fh, const unsigned char *buffer, size_t length) {
 #else
@@ -609,6 +610,7 @@ finish:
     return written;
 #endif
 }
+#endif
 
 extern "C" ssize_t write(int fildes, const void *buf, size_t length) {
 
@@ -638,6 +640,7 @@ extern "C" void _ttywrch(int ch) {
 }
 #endif
 
+#ifndef SIMULATION
 #if defined(__ICCARM__)
 extern "C" size_t    __read (int        fh, unsigned char *buffer, size_t       length) {
 #else
@@ -699,6 +702,8 @@ extern "C" int PREFIX(_read)(FILEHANDLE fh, unsigned char *buffer, unsigned int 
     return bytes_read;
 #endif
 }
+
+#endif
 
 extern "C" ssize_t read(int fildes, void *buf, size_t length) {
 
