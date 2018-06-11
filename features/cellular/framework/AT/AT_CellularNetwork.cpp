@@ -383,6 +383,7 @@ nsapi_error_t AT_CellularNetwork::disconnect()
     }
     return err;
 #else
+    nsapi_error_t error = NSAPI_ERROR_OK;
     if(_cid >= 0)
     {
 		_at.lock();
@@ -392,6 +393,7 @@ nsapi_error_t AT_CellularNetwork::disconnect()
 		_at.resp_start();
 		_at.resp_stop();
 		_at.restore_at_timeout();
+		error = _at.unlock_return_error();
     }
 
     _connect_status = NSAPI_STATUS_DISCONNECTED;
@@ -399,7 +401,7 @@ nsapi_error_t AT_CellularNetwork::disconnect()
         _connection_status_cb(NSAPI_EVENT_CONNECTION_STATUS_CHANGE, NSAPI_STATUS_DISCONNECTED);
     }
 
-    return _at.unlock_return_error();
+    return error;
 #endif
 }
 
