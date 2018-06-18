@@ -4137,7 +4137,18 @@
         "extra_labels": ["STM", "STM32L4", "STM32L4A6xG", "STM32L4A6RG"],
         "supported_toolchains": ["ARM", "uARM", "IAR", "GCC_ARM"],
         "detect_code": ["0820"],
-        "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER", "CLOCK_SOURCE=4"],
+        "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER"],
+		"config": {
+            "clock_source": {
+                "help": "Mask value : USE_PLL_HSE_EXTC | USE_PLL_HSE_XTAL (need HW patch) | USE_PLL_HSI",
+                "value": "USE_PLL_HSI",
+                "macro_name": "CLOCK_SOURCE"
+            },
+           	"lpticker_lptim": {
+                "help": "This target supports LPTIM. Set value 1 to use LPTIM for LPTICKER, or 0 to use RTC wakeup timer",
+                "value": 1
+            }
+        },
         "device_has_add": ["ANALOGIN", "ANALOGOUT", "I2C", "I2CSLAVE", "I2C_ASYNCH", "INTERRUPTIN", "LOWPOWERTIMER", "PORTIN", "PORTINOUT", "PORTOUT", "PWMOUT", "RTC", "SERIAL", "SERIAL_FC", "SLEEP", "SPI", "SPISLAVE", "SPI_ASYNCH", "STDIO_MESSAGES", "TRNG"],
         "release_versions": ["2", "5"],
         "device_name": "STM32L4A6RG"
@@ -4149,7 +4160,18 @@
         "extra_labels": ["STM", "STM32L4", "STM32L4A6xG", "STM32L4A6VG"],
         "supported_toolchains": ["ARM", "uARM", "IAR", "GCC_ARM"],
         "detect_code": ["0820"],
-        "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER", "CLOCK_SOURCE=4"],
+        "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER"],
+        "config": {
+            "clock_source": {
+                "help": "Mask value : USE_PLL_HSE_EXTC | USE_PLL_HSE_XTAL (need HW patch) | USE_PLL_HSI",
+                "value": "USE_PLL_HSI",
+                "macro_name": "CLOCK_SOURCE"
+            },
+           	"lpticker_lptim": {
+                "help": "This target supports LPTIM. Set value 1 to use LPTIM for LPTICKER, or 0 to use RTC wakeup timer",
+                "value": 1
+            }
+        },
         "device_has_add": ["ANALOGIN", "ANALOGOUT", "I2C", "I2CSLAVE", "I2C_ASYNCH", "INTERRUPTIN", "LOWPOWERTIMER", "PORTIN", "PORTINOUT", "PORTOUT", "PWMOUT", "RTC", "SERIAL", "SERIAL_FC", "SLEEP", "SPI", "SPISLAVE", "SPI_ASYNCH", "STDIO_MESSAGES", "TRNG"],
         "release_versions": ["2", "5"],
         "device_name": "STM32L4A6VG"
@@ -4172,7 +4194,7 @@
         },
         "supported_toolchains": ["ARM", "uARM", "IAR", "GCC_ARM"],
         "detect_code": ["0820"],
-        "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER", "CLOCK_SOURCE=4", "RTC_LSI"],
+        "macros": ["TRANSACTION_QUEUE_SIZE_SPI=2", "USBHOST_OTHER", "RTC_LSI"],
         "device_has_add": ["ANALOGIN", "ANALOGOUT", "I2C", "I2CSLAVE", "I2C_ASYNCH", "INTERRUPTIN", "LOWPOWERTIMER", "PORTIN", "PORTINOUT", "PORTOUT", "PWMOUT", "RTC", "SERIAL", "SERIAL_FC", "SLEEP", "SPI", "SPISLAVE", "SPI_ASYNCH", "STDIO_MESSAGES", "TRNG"],
         "release_versions": ["2", "5"],
         "device_name": "STM32L471VG"
