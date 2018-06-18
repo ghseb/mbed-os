@@ -35,21 +35,8 @@
 // CORE: 16 vectors = 64 bytes from 0x00 to 0x3F
 // MCU Peripherals: 82 vectors = 328 bytes from 0x40 to 0x187
 // Total: 98 vectors = 392 bytes (0x188) to be reserved in RAM
-#define NVIC_NUM_VECTORS      98
-#define NVIC_USER_IRQ_OFFSET  16
-#define NVIC_RAM_VECTOR_ADDRESS 0x10000000
-
-#include "cmsis.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-void NVIC_SetVector(IRQn_Type IRQn, uint32_t vector);
-uint32_t NVIC_GetVector(IRQn_Type IRQn);
-
-#ifdef __cplusplus
-}
-#endif
+#define NVIC_NUM_VECTORS        98
+#define NVIC_RAM_VECTOR_ADDRESS   (0x10000000)  // Vectors positioned at start of RAM
+#define NVIC_FLASH_VECTOR_ADDRESS (0x08008000)  // Initial vector position in flash
 
 #endif
