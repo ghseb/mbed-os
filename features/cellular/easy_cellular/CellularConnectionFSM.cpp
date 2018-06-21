@@ -70,11 +70,12 @@ CellularConnectionFSM::CellularConnectionFSM() :
 CellularConnectionFSM::~CellularConnectionFSM()
 {
     stop();
-    delete _cellularDevice;
 }
 
 void CellularConnectionFSM::stop()
 {
+	_power->off();
+
     _queue.cancel(_event_id);
     _queue.break_dispatch();
 
@@ -83,8 +84,6 @@ void CellularConnectionFSM::stop()
         delete _queue_thread;
         _queue_thread = NULL;
     }
-
-    _power->off();
 
     delete _cellularDevice;
     _cellularDevice = NULL;
@@ -405,8 +404,6 @@ void CellularConnectionFSM::device_ready()
         _event_status_cb((nsapi_event_t)CellularDeviceReady, 0);
     }
     _power->remove_device_ready_urc_cb(mbed::callback(this, &CellularConnectionFSM::ready_urc_cb));
-    _cellularDevice->close_power();
-    _power = NULL;
 }
 
 void CellularConnectionFSM::state_device_ready()
