@@ -50,8 +50,8 @@ namespace mbed {
 #define MDMRXD PD_9
 #define CELLULAR_DEVICE QUECTEL_MC60
 #elif TARGET_STM32L4A6RG
-#define MDMTXD PD_8
-#define MDMRXD PD_9
+#define MDMTXD PC_4
+#define MDMRXD PC_5
 #define CELLULAR_DEVICE CINTERION_ELS61
 #else
 //#error Cellular target not defined, see cellular/targets.h
