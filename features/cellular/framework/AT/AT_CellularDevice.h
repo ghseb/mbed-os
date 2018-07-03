@@ -25,6 +25,7 @@
 #include "AT_CellularSMS.h"
 #include "AT_CellularPower.h"
 #include "AT_CellularInformation.h"
+#include "AT_M2mCellularInformation.h"
 
 #include "ATHandler.h"
 
@@ -65,6 +66,8 @@ public: // CellularDevice
 
     virtual CellularInformation *open_information(FileHandle *fh);
 
+    virtual M2mCellularInformation *open_m2m_information(FileHandle *fh);
+
     virtual void close_network();
 
     virtual void close_sms();
@@ -74,6 +77,8 @@ public: // CellularDevice
     virtual void close_sim();
 
     virtual void close_information();
+
+    virtual void close_m2m_information();
 
     virtual void set_timeout(int timeout);
 
@@ -91,6 +96,7 @@ protected:
     AT_CellularSIM *_sim;
     AT_CellularPower* _power;
     AT_CellularInformation* _information;
+    AT_M2mCellularInformation *_m2m_cellular_information;
 
 protected:
     events::EventQueue &_queue;
