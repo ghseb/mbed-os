@@ -27,7 +27,7 @@
 /   3: f_lseek() function is removed in addition to 2. */
 
 
-#define FF_USE_STRFUNC	0
+#define FF_USE_STRFUNC	2	// MABE 062018 default 0 -> 2
 /* This option switches string functions, f_gets(), f_putc(), f_puts() and f_printf().
 /
 /  0: Disable string functions.
@@ -52,12 +52,12 @@
 /* This option switches f_expand function. (0:Disable or 1:Enable) */
 
 
-#define FF_USE_CHMOD	0
+#define FF_USE_CHMOD	1	// MABE 062018 default 0 -> 1
 /* This option switches attribute manipulation functions, f_chmod() and f_utime().
 /  (0:Disable or 1:Enable) Also FF_FS_READONLY needs to be 0 to enable this option. */
 
 
-#define FF_USE_LABEL	0
+#define FF_USE_LABEL	1	// MABE 062018 default 0 -> 1
 /* This option switches volume label functions, f_getlabel() and f_setlabel().
 /  (0:Disable or 1:Enable) */
 
@@ -138,7 +138,7 @@
 /  on character encoding. When LFN is not enabled, these options have no effect. */
 
 
-#define FF_STRF_ENCODE	3
+#define FF_STRF_ENCODE	0	// MABE 062018 default 3 -> 0
 /* When FF_LFN_UNICODE >= 1 with LFN enabled, string I/O functions, f_gets(),
 /  f_putc(), f_puts and f_printf() convert the character encoding in it.
 /  This option selects assumption of character encoding ON THE FILE to be
@@ -151,7 +151,7 @@
 */
 
 
-#define FF_FS_RPATH		1
+#define FF_FS_RPATH		2 	// MABE 062018 default 1 -> 2
 /* This option configures support for relative path.
 /
 /   0: Disable relative path and remove related functions.
@@ -164,7 +164,7 @@
 / Drive/Volume Configurations
 /---------------------------------------------------------------------------*/
 
-#define FF_VOLUMES		4
+#define FF_VOLUMES		1	// MABE 062018 default 4 -> 1
 /* Number of volumes (logical drives) to be used. (1-10) */
 
 
@@ -183,11 +183,13 @@
 /  number and only an FAT volume found on the physical drive will be mounted.
 /  When this function is enabled (1), each logical drive number can be bound to
 /  arbitrary physical drive and partition listed in the VolToPart[]. Also f_fdisk()
-/  funciton will be available. */
+/  function will be available. */
 
 
-#define FF_MIN_SS		512
-#define FF_MAX_SS		4096
+#define FF_MIN_SS		 512
+#define FF_MAX_SS		4096	/* MABE 072018: is taken as sector size according to */
+								/* the determination of the erase size */
+/* MABE 062018 -> must be the same size as the minimal erase size of the QSPI-flash */
 /* This set of options configures the range of sector size to be supported. (512,
 /  1024, 2048 or 4096) Always set both 512 for most systems, generic memory card and
 /  harddisk. But a larger value may be required for on-board flash memory and some
@@ -196,7 +198,7 @@
 /  GET_SECTOR_SIZE command. */
 
 
-#define FF_USE_TRIM		1
+#define FF_USE_TRIM		0		// MABE 062018 1 -> 0
 /* This option switches support for ATA-TRIM. (0:Disable or 1:Enable)
 /  To enable Trim function, also CTRL_TRIM command should be implemented to the
 /  disk_ioctl() function. */
@@ -219,7 +221,7 @@
 / System Configurations
 /---------------------------------------------------------------------------*/
 
-#define FF_FS_TINY		1
+#define FF_FS_TINY		0		// MABE 062018 1 -> 0
 /* This option switches tiny buffer configuration. (0:Normal or 1:Tiny)
 /  At the tiny configuration, size of file object (FIL) is shrinked FF_MAX_SS bytes.
 /  Instead of private sector buffer eliminated from the file object, common sector
