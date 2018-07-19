@@ -53,6 +53,10 @@ namespace mbed {
 #define MDMTXD PC_4
 #define MDMRXD PC_5
 #define CELLULAR_DEVICE CINTERION_ELS61
+#elif TARGET_STM32L486ZG
+#define MDMTXD PG_7
+#define MDMRXD PG_8
+#define CELLULAR_DEVICE CINTERION_ELS61
 #else
 //#error Cellular target not defined, see cellular/targets.h
 //#define CELLULAR_TARGET <target-modem>
