@@ -168,20 +168,6 @@ CellularInformation *AT_CellularDevice::open_information(FileHandle *fh)
     return _information;
 }
 
-M2mCellularInformation* mbed::AT_CellularDevice::open_m2m_information(FileHandle* fh)
-{
-	if (!_m2m_cellular_information) {
-		ATHandler *atHandler = get_at_handler(fh);
-		if (atHandler) {
-			_m2m_cellular_information = new AT_M2mCellularInformation(*atHandler);
-			if (!_m2m_cellular_information) {
-				release_at_handler(atHandler);
-			}
-		}
-	}
-	return _m2m_cellular_information;
-}
-
 void AT_CellularDevice::close_network()
 {
     if (_network) {
@@ -223,15 +209,6 @@ void AT_CellularDevice::close_information()
         release_at_handler(&_information->get_at_handler());
         delete _information;
         _information = NULL;
-    }
-}
-
-void mbed::AT_CellularDevice::close_m2m_information()
-{
-    if (_m2m_cellular_information) {
-        release_at_handler(&_m2m_cellular_information->get_at_handler());
-        delete _m2m_cellular_information;
-        _m2m_cellular_information = NULL;
     }
 }
 
