@@ -72,6 +72,16 @@ static SingletonPtr<PlatformMutex> _mutex;
 
 #define FILE_HANDLE_RESERVED    ((FileHandle*)0xFFFFFFFF)
 
+/**
+ * Macros for setting console flow control.
+ */
+#define CONSOLE_FLOWCONTROL_RTS     1
+#define CONSOLE_FLOWCONTROL_CTS     2
+#define CONSOLE_FLOWCONTROL_RTSCTS  3
+#define mbed_console_concat_(x) CONSOLE_FLOWCONTROL_##x
+#define mbed_console_concat(x) mbed_console_concat_(x)
+#define CONSOLE_FLOWCONTROL mbed_console_concat(MBED_CONF_TARGET_CONSOLE_UART_FLOW_CONTROL)
+
 using namespace mbed;
 
 #if defined(__MICROLIB) && (__ARMCC_VERSION>5030000)
@@ -116,7 +126,6 @@ void remove_filehandle(FileHandle *file) {
 #if DEVICE_SERIAL
 extern int stdio_uart_inited;
 extern serial_t stdio_uart;
-#endif
 
 /* Private FileHandle to implement backwards-compatible functionality of
  * direct HAL serial access for default stdin/stdout/stderr.
@@ -147,6 +156,13 @@ DirectSerial::DirectSerial(PinName tx, PinName rx, int baud) {
     if (stdio_uart_inited) return;
     serial_init(&stdio_uart, tx, rx);
     serial_baud(&stdio_uart, baud);
+#if   CONSOLE_FLOWCONTROL == CONSOLE_FLOWCONTROL_RTS
+    serial_set_flow_control(&stdio_uart, FlowControlRTS, STDIO_UART_RTS, NC);
+#elif CONSOLE_FLOWCONTROL == CONSOLE_FLOWCONTROL_CTS
+    serial_set_flow_control(&stdio_uart, FlowControlCTS, NC, STDIO_UART_CTS);
+#elif CONSOLE_FLOWCONTROL == CONSOLE_FLOWCONTROL_RTSCTS
+    serial_set_flow_control(&stdio_uart, FlowControlRTSCTS, STDIO_UART_RTS, STDIO_UART_CTS);
+#endif
 }
 
 ssize_t DirectSerial::write(const void *buffer, size_t size) {
@@ -176,6 +192,7 @@ short DirectSerial::poll(short events) const {
     }
     return revents;
 }
+#endif
 
 class Sink : public FileHandle {
 public:
@@ -216,6 +233,13 @@ static FileHandle* default_console()
 #if DEVICE_SERIAL
 #  if MBED_CONF_PLATFORM_STDIO_BUFFERED_SERIAL
     static UARTSerial console(STDIO_UART_TX, STDIO_UART_RX, MBED_CONF_PLATFORM_STDIO_BAUD_RATE);
+#   if   CONSOLE_FLOWCONTROL == CONSOLE_FLOWCONTROL_RTS
+        console.set_flow_control(SerialBase::RTS, STDIO_UART_RTS, NC);
+#   elif CONSOLE_FLOWCONTROL == CONSOLE_FLOWCONTROL_CTS
+        console.set_flow_control(SerialBase::CTS, NC, STDIO_UART_CTS);
+#   elif CONSOLE_FLOWCONTROL == CONSOLE_FLOWCONTROL_RTSCTS
+        console.set_flow_control(SerialBase::RTSCTS, STDIO_UART_RTS, STDIO_UART_CTS);
+#   endif
 #  else
     static DirectSerial console(STDIO_UART_TX, STDIO_UART_RX, MBED_CONF_PLATFORM_STDIO_BAUD_RATE);
 #  endif
@@ -320,16 +344,16 @@ static int reserve_filehandle() {
 }
 
 int mbed::bind_to_fd(FileHandle *fh) {
-    int fh_i = reserve_filehandle();
-    if (fh_i < 0) {
-        return fh_i;
+    int fildes = reserve_filehandle();
+    if (fildes < 0) {
+        return fildes;
     }
 
-    filehandles[fh_i] = fh;
-    stdio_in_prev[fh_i] = 0;
-    stdio_out_prev[fh_i] = 0;
+    filehandles[fildes] = fh;
+    stdio_in_prev[fildes] = 0;
+    stdio_out_prev[fildes] = 0;
 
-    return fh_i;
+    return fildes;
 }
 
 static int unbind_from_fd(int fd, FileHandle *fh) {
@@ -440,9 +464,9 @@ extern "C" FILEHANDLE PREFIX(_open)(const char *name, int openflags) {
 }
 
 extern "C" int open(const char *name, int oflag, ...) {
-    int fh_i = reserve_filehandle();
-    if (fh_i < 0) {
-        return fh_i;
+    int fildes = reserve_filehandle();
+    if (fildes < 0) {
+        return fildes;
     }
 
     FileHandle *res = NULL;
@@ -452,7 +476,7 @@ extern "C" int open(const char *name, int oflag, ...) {
         /* The first part of the filename (between first 2 '/') is not a
          * registered mount point in the namespace.
          */
-        return handle_open_errors(-ENODEV, fh_i);
+        return handle_open_errors(-ENODEV, fildes);
     }
 
     if (path.isFile()) {
@@ -460,28 +484,28 @@ extern "C" int open(const char *name, int oflag, ...) {
     } else {
         FileSystemHandle *fs = path.fileSystem();
         if (fs == NULL) {
-            return handle_open_errors(-ENODEV, fh_i);
+            return handle_open_errors(-ENODEV, fildes);
         }
         int err = fs->open(&res, path.fileName(), oflag);
         if (err) {
-            return handle_open_errors(err, fh_i);
+            return handle_open_errors(err, fildes);
         }
     }
 
-    filehandles[fh_i] = res;
-    stdio_in_prev[fh_i] = 0;
-    stdio_out_prev[fh_i] = 0;
+    filehandles[fildes] = res;
+    stdio_in_prev[fildes] = 0;
+    stdio_out_prev[fildes] = 0;
 
-    return fh_i;
+    return fildes;
 }
 
 extern "C" int PREFIX(_close)(FILEHANDLE fh) {
     return close(fh);
 }
 
-extern "C" int close(int fh) {
-    FileHandle* fhc = get_fhc(fh);
-    filehandles[fh] = NULL;
+extern "C" int close(int fildes) {
+    FileHandle* fhc = get_fhc(fildes);
+    filehandles[fildes] = NULL;
     if (fhc == NULL) {
         errno = EBADF;
         return -1;
@@ -512,55 +536,85 @@ extern "C" size_t    __write (int        fh, const unsigned char *buffer, size_t
 #else
 extern "C" int PREFIX(_write)(FILEHANDLE fh, const unsigned char *buffer, unsigned int length, int mode) {
 #endif
-    int n; // n is the number of bytes written
 
 #if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
     if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
-        error("Error - writing to a file in an ISR or critical section\r\n");
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_PROHIBITED_IN_ISR_CONTEXT), "Error - writing to a file in an ISR or critical section\r\n", fh);
     }
 #endif
 
-    if (fh < 3) {
-#if DEVICE_SERIAL
-        if (!stdio_uart_inited) init_serial();
-#if MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES
-        for (unsigned int i = 0; i < length; i++) {
-            if (buffer[i] == '\n' && stdio_out_prev != '\r') {
-                 serial_putc(&stdio_uart, '\r');
+    if (length > SSIZE_MAX) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ssize_t slength = length;
+    ssize_t written = 0;
+
+    if (convert_crlf(fh)) {
+        // local prev is previous in buffer during seek
+        // stdio_out_prev[fh] is last thing actually written
+        char prev = stdio_out_prev[fh];
+        // Seek for '\n' without preceding '\r'; if found flush
+        // preceding and insert '\r'. Continue until end of input.
+        for (ssize_t cur = 0; cur < slength; cur++) {
+            if (buffer[cur] == '\n' && prev != '\r') {
+                ssize_t r;
+                // flush stuff preceding the \n
+                if (cur > written) {
+                    r = write(fh, buffer + written, cur - written);
+                    if (r < 0) {
+                        return -1;
+                    }
+                    written += r;
+                    if (written < cur) {
+                        // For some reason, didn't write all - give up now
+                        goto finish;
+                    }
+                    stdio_out_prev[fh] = prev;
+                }
+                // insert a \r now, leaving the \n still to be written
+                r = write(fh, "\r", 1);
+                if (r < 0) {
+                    return -1;
+                }
+                if (r < 1) {
+                    goto finish;
+                }
+                stdio_out_prev[fh] = '\r';
             }
-            serial_putc(&stdio_uart, buffer[i]);
-            stdio_out_prev = buffer[i];
+            prev = buffer[cur];
         }
-#else
-        for (unsigned int i = 0; i < length; i++) {
-            serial_putc(&stdio_uart, buffer[i]);
-        }
-#endif
-#endif
-        n = length;
-    } else {
-        FileHandle* fhc = filehandles[fh-3];
-        if (fhc == NULL) {
-            errno = EBADF;
+    }
+
+    // Flush remaining from conversion, or the whole thing if no conversion
+    if (written < slength) {
+        ssize_t r = write(fh, buffer + written, slength - written);
+        if (r < 0) {
             return -1;
         }
-
-        n = fhc->write(buffer, length);
-        if (n < 0) {
-            errno = -n;
+        written += r;
+        if (written > 0) {
+            stdio_out_prev[fh] = buffer[written - 1];
         }
     }
+
+finish:
 #ifdef __ARMCC_VERSION
-    return length-n;
+    if (written >= 0) {
+        return slength - written;
+    } else {
+        return written;
+    }
 #else
-    return n;
+    return written;
 #endif
 }
-#endif 	/*SIMULATION */
+#endif
 
-extern "C" ssize_t write(int fh, const void *buf, size_t length) {
+extern "C" ssize_t write(int fildes, const void *buf, size_t length) {
 
-    FileHandle* fhc = get_fhc(fh);
+    FileHandle* fhc = get_fhc(fildes);
     if (fhc == NULL) {
         errno = EBADF;
         return -1;
@@ -586,69 +640,74 @@ extern "C" void _ttywrch(int ch) {
 }
 #endif
 
-//#if defined(__ICCARM__)
-//extern "C" size_t    __read (int        fh, unsigned char *buffer, size_t       length) {
-//#else
-//extern "C" int PREFIX(_read)(FILEHANDLE fh, unsigned char *buffer, unsigned int length, int mode) {
-//#endif
-//    int n; // n is the number of bytes read
-//
-//#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
-//    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
-//        error("Error - reading from a file in an ISR or critical section\r\n");
-//    }
-//#endif
-//
-//    if (fh < 3) {
-//        // only read a character at a time from stdin
-//#if DEVICE_SERIAL
-//        if (!stdio_uart_inited) init_serial();
-//#if MBED_CONF_PLATFORM_STDIO_CONVERT_NEWLINES
-//        while (true) {
-//            char c = serial_getc(&stdio_uart);
-//            if ((c == '\r' && stdio_in_prev != '\n') ||
-//                (c == '\n' && stdio_in_prev != '\r')) {
-//                stdio_in_prev = c;
-//                *buffer = '\n';
-//                break;
-//            } else if ((c == '\r' && stdio_in_prev == '\n') ||
-//                       (c == '\n' && stdio_in_prev == '\r')) {
-//                stdio_in_prev = c;
-//                // onto next character
-//                continue;
-//            } else {
-//                stdio_in_prev = c;
-//                *buffer = c;
-//                break;
-//            }
-//        }
-//#else
-//        *buffer = serial_getc(&stdio_uart);
-//#endif
-//#endif
-//        n = 1;
-//    } else {
-//        FileHandle* fhc = filehandles[fh-3];
-//        if (fhc == NULL) {
-//            errno = EBADF;
-//            return -1;
-//        }
-//
-//        n = fhc->read(buffer, length);
-//        if (n < 0) {
-//            errno = -n;
-//        }
-//    }
-//#ifdef __ARMCC_VERSION
-//    return length-n;
-//#else
-//    return n;
-//#endif
-//}
+#ifndef SIMULATION
+#if defined(__ICCARM__)
+extern "C" size_t    __read (int        fh, unsigned char *buffer, size_t       length) {
+#else
+extern "C" int PREFIX(_read)(FILEHANDLE fh, unsigned char *buffer, unsigned int length, int mode) {
+#endif
 
-extern "C" ssize_t read(int fh, void *buf, size_t length) {
+#if defined(MBED_TRAP_ERRORS_ENABLED) && MBED_TRAP_ERRORS_ENABLED && defined(MBED_CONF_RTOS_PRESENT)
+    if (core_util_is_isr_active() || !core_util_are_interrupts_enabled()) {
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_PROHIBITED_IN_ISR_CONTEXT), "Error - reading from a file in an ISR or critical section\r\n", fh);
+    }
+#endif
 
-    FileHandle* fhc = get_fhc(fh);
+    if (length > SSIZE_MAX) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ssize_t bytes_read = 0;
+
+    if (convert_crlf(fh)) {
+        while (true) {
+            char c;
+            ssize_t r = read(fh, &c, 1);
+            if (r < 0) {
+                return -1;
+            }
+            if (r == 0) {
+                return bytes_read;
+            }
+            if ((c == '\r' && stdio_in_prev[fh] != '\n') ||
+                (c == '\n' && stdio_in_prev[fh] != '\r')) {
+                stdio_in_prev[fh] = c;
+                *buffer = '\n';
+                break;
+            } else if ((c == '\r' && stdio_in_prev[fh] == '\n') ||
+                       (c == '\n' && stdio_in_prev[fh] == '\r')) {
+                stdio_in_prev[fh] = c;
+                continue;
+            } else {
+                stdio_in_prev[fh] = c;
+                *buffer = c;
+                break;
+            }
+        }
+        bytes_read = 1;
+    } else {
+        bytes_read = read(fh, buffer, length);
+    }
+
+#ifdef __ARMCC_VERSION
+    if (bytes_read < 0) {
+        return -1;
+    } else if (bytes_read == 0) {
+        return 0x80000000 | length; // weird EOF indication
+    } else {
+        return (ssize_t)length - bytes_read;
+    }
+#else
+    return bytes_read;
+#endif
+}
+
+#endif
+
+extern "C" ssize_t read(int fildes, void *buf, size_t length) {
+
+    FileHandle* fhc = get_fhc(fildes);
     if (fhc == NULL) {
         errno = EBADF;
         return -1;
@@ -673,8 +732,8 @@ extern "C" int _isatty(FILEHANDLE fh)
     return isatty(fh);
 }
 
-extern "C" int isatty(int fh) {
-    FileHandle* fhc = get_fhc(fh);
+extern "C" int isatty(int fildes) {
+    FileHandle* fhc = get_fhc(fildes);
     if (fhc == NULL) {
         errno = EBADF;
         return 0;
@@ -711,8 +770,8 @@ int _lseek(FILEHANDLE fh, int offset, int whence)
     return off;
 }
 
-extern "C" off_t lseek(int fh, off_t offset, int whence) {
-    FileHandle* fhc = get_fhc(fh);
+extern "C" off_t lseek(int fildes, off_t offset, int whence) {
+    FileHandle* fhc = get_fhc(fildes);
     if (fhc == NULL) {
         errno = EBADF;
         return -1;
@@ -732,8 +791,8 @@ extern "C" int PREFIX(_ensure)(FILEHANDLE fh) {
 }
 #endif
 
-extern "C" int fsync(int fh) {
-    FileHandle* fhc = get_fhc(fh);
+extern "C" int fsync(int fildes) {
+    FileHandle* fhc = get_fhc(fildes);
     if (fhc == NULL) {
         errno = EBADF;
         return -1;
@@ -796,8 +855,8 @@ extern "C" int _fstat(int fh, struct stat *st) {
 }
 #endif
 
-extern "C" int fstat(int fh, struct stat *st) {
-    FileHandle* fhc = get_fhc(fh);
+extern "C" int fstat(int fildes, struct stat *st) {
+    FileHandle* fhc = get_fhc(fildes);
     if (fhc == NULL) {
         errno = EBADF;
         return -1;
@@ -806,6 +865,41 @@ extern "C" int fstat(int fh, struct stat *st) {
     st->st_mode = fhc->isatty() ? S_IFCHR : S_IFREG;
     st->st_size = fhc->size();
     return 0;
+}
+
+extern "C" int fcntl(int fildes, int cmd, ...) {
+    FileHandle *fhc = get_fhc(fildes);
+    if (fhc == NULL) {
+        errno = EBADF;
+        return -1;
+    }
+
+    switch (cmd) {
+        case F_GETFL: {
+            int flags = 0;
+            if (fhc->is_blocking()) {
+                flags |= O_NONBLOCK;
+            }
+            return flags;
+        }
+        case F_SETFL: {
+            va_list ap;
+            va_start(ap, cmd);
+            int flags = va_arg(ap, int);
+            va_end(ap);
+            int ret = fhc->set_blocking(flags & O_NONBLOCK);
+            if (ret < 0) {
+                errno = -ret;
+                return -1;
+            }
+            return 0;
+        }
+
+        default: {
+            errno = EINVAL;
+            return -1;
+        }
+    }
 }
 
 extern "C" int poll(struct pollfd fds[], nfds_t nfds, int timeout)
@@ -999,7 +1093,7 @@ extern "C" int statvfs(const char *path, struct statvfs *buf) {
 #include "mbed_error.h"
 namespace __gnu_cxx {
     void __verbose_terminate_handler() {
-        error("Exception");
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_CLIB_EXCEPTION),"Exception", 0);
     }
 }
 extern "C" WEAK void __cxa_pure_virtual(void);
@@ -1083,21 +1177,11 @@ extern "C" void exit(int return_code) {
         semihost_exit();
     }
 #endif
-
-#ifdef SIMULATION
-//    int end = 0x10000; 	//INT_MAX / 2; 0x10000;
-//    for (int ii = 0; ii < end;)
-//    {
-//    	ii += 1;
-//    }
-    _Exit(return_code);
-#else
     if (return_code) {
         mbed_die();
     }
 
     while (1);
-#endif
 }
 
 #if !defined(TOOLCHAIN_GCC_ARM) && !defined(TOOLCHAIN_GCC_CR)
@@ -1295,7 +1379,7 @@ extern "C" void __cxa_guard_abort(int *guard_object_p)
 
 #endif
 
-#if defined(MBED_MEM_TRACING_ENABLED) && (defined(__CC_ARM) || defined(__ICCARM__))
+#if defined(MBED_MEM_TRACING_ENABLED) && (defined(__CC_ARM) || defined(__ICCARM__) || (defined (__ARMCC_VERSION) && (__ARMCC_VERSION >= 6010050)))
 
 // If the memory tracing is enabled, the wrappers in mbed_alloc_wrappers.cpp
 // provide the implementation for these. Note: this needs to use the wrappers
@@ -1308,7 +1392,7 @@ void *operator new(std::size_t count)
 {
     void *buffer = malloc_wrapper(count, MBED_CALLER_ADDR());
     if (NULL == buffer) {
-        error("Operator new out of memory\r\n");
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_OUT_OF_MEMORY), "Operator new out of memory\r\n", count);
     }
     return buffer;
 }
@@ -1352,7 +1436,7 @@ void *operator new(std::size_t count)
 {
     void *buffer = malloc_wrapper(_REENT, count, MBED_CALLER_ADDR());
     if (NULL == buffer) {
-        error("Operator new out of memory\r\n");
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_OUT_OF_MEMORY), "Operator new out of memory\r\n", count);
     }
     return buffer;
 }
@@ -1361,7 +1445,7 @@ void *operator new[](std::size_t count)
 {
     void *buffer = malloc_wrapper(_REENT, count, MBED_CALLER_ADDR());
     if (NULL == buffer) {
-        error("Operator new[] out of memory\r\n");
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_OUT_OF_MEMORY), "Operator new out of memory\r\n", count);
     }
     return buffer;
 }
@@ -1392,7 +1476,7 @@ void *operator new(std::size_t count)
 {
     void *buffer = malloc(count);
     if (NULL == buffer) {
-        error("Operator new out of memory\r\n");
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_OUT_OF_MEMORY), "Operator new out of memory\r\n", count);
     }
     return buffer;
 }
@@ -1401,7 +1485,7 @@ void *operator new[](std::size_t count)
 {
     void *buffer = malloc(count);
     if (NULL == buffer) {
-        error("Operator new[] out of memory\r\n");
+        MBED_ERROR1(MBED_MAKE_ERROR(MBED_MODULE_PLATFORM, MBED_ERROR_CODE_OUT_OF_MEMORY), "Operator new[] out of memory\r\n", count);
     }
     return buffer;
 }

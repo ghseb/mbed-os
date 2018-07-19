@@ -19,7 +19,6 @@
 #define AT_HANDLER_H_
 
 #include "platform/mbed_retarget.h"
-#include "stdio.h"
 
 #include "EventQueue.h"
 #include "PlatformMutex.h"
@@ -64,8 +63,7 @@ struct device_err_t {
  *
  *  Class for sending AT commands and parsing AT responses.
  */
-class ATHandler
-{
+class ATHandler {
 
 public:
     /** Constructor
@@ -74,8 +72,9 @@ public:
      *  @param queue            Event queue used to transfer sigio events to this thread
      *  @param timeout          Timeout when reading for AT response
      *  @param output_delimiter delimiter used when parsing at responses, "\r" should be used as output_delimiter
+     *  @param send_delay       the minimum delay in ms between the end of last response and the beginning of a new command
      */
-    ATHandler(FileHandle *fh, events::EventQueue &queue, int timeout, const char *output_delimiter);
+    ATHandler(FileHandle *fh, events::EventQueue &queue, int timeout, const char *output_delimiter, uint16_t send_delay = 0);
     ~ATHandler();
 
     /** Return used file handle.
@@ -83,12 +82,6 @@ public:
      *  @return used file handle
      */
     FileHandle *get_file_handle();
-
-    /** Set file handle, which is used for reading AT responses and writing AT commands
-     *
-     *  @param fh file handle used for reading AT responses and writing AT commands
-     */
-    void set_file_handle(FileHandle *fh);
 
     /** Locks the mutex for file handle if AT_HANDLER_MUTEX is defined.
      */
@@ -105,11 +98,20 @@ public:
     nsapi_error_t unlock_return_error();
 
     /** Set the urc callback for urc. If urc is found when parsing AT responses, then call if called.
+     *  If urc is already set then it's not set twice.
+     *
+     *  @param prefix   Register urc prefix for callback. Urc could be for example "+CMTI: "
+     *  @param callback Callback, which is called if urc is found in AT response
+     *  @return NSAPI_ERROR_OK or NSAPI_ERROR_NO_MEMORY if no memory
+     */
+    nsapi_error_t set_urc_handler(const char *prefix, mbed::Callback<void()> callback);
+
+    /** Remove urc handler from linked list of urc's
      *
      *  @param prefix   Register urc prefix for callback. Urc could be for example "+CMTI: "
      *  @param callback Callback, which is called if urc is found in AT response
      */
-    void set_urc_handler(const char *prefix, mbed::Callback<void()> callback);
+    void remove_urc_handler(const char *prefix, mbed::Callback<void()> callback);
 
     ATHandler *_nextATHandler; // linked list
 
@@ -154,6 +156,11 @@ public:
      */
     void clear_error();
 
+    /**
+     * Flushes the underlying stream
+     */
+    void flush();
+
     /** Tries to find oob's from the AT response. Call the urc callback if one is found.
      */
     void process_oob();
@@ -162,10 +169,18 @@ public:
      */
     void set_filehandle_sigio();
 
-    /**
-     * Flushes the underlying stream
+    /** Set file handle, which is used for reading AT responses and writing AT commands
+     *
+     *  @param fh file handle used for reading AT responses and writing AT commands
      */
-    void flush();
+    void set_file_handle(FileHandle *fh);
+
+    /** Set is file handle usable. Some situations like after going to data mode, file handle is not usable anymore.
+     *  Any items in queue are not to be processed.
+     *
+     *  @param usable true for usable filehandle
+     */
+    void set_is_filehandle_usable(bool usable);
 
 protected:
     void event();
@@ -176,6 +191,7 @@ protected:
 private:
 
     void set_error(nsapi_error_t err);
+    void _process_oob();
 
     events::EventQueue &_queue;
     nsapi_error_t _last_err;
@@ -183,25 +199,27 @@ private:
     device_err_t  _last_at_err;
     uint16_t _oob_string_max_length;
     char *_output_delimiter;
-    uint8_t _output_delimiter_length;
 
     struct oob_t {
-        bool matching_to_received;
         const char *prefix;
+        int prefix_len;
         mbed::Callback<void()> cb;
         oob_t *next;
     };
     oob_t *_oobs;
-    bool _response_terminated;
     uint32_t _at_timeout;
     uint32_t _previous_at_timeout;
+
+    uint16_t _at_send_delay;
+    uint64_t _last_response_stop;
 
     bool _fh_sigio_set;
 
     bool _processing;
     int32_t _ref_count;
+    bool _is_fh_usable;
 
-        //*************************************
+    //*************************************
 public:
 
     /** Starts the command writing by clearing the last error and writing the given command.
@@ -209,7 +227,7 @@ public:
      *
      *  @param cmd  AT command to be written to modem
      */
-    void cmd_start(const char* cmd);
+    void cmd_start(const char *cmd);
 
     /** Writes integer type AT command subparameter. Starts with the delimiter if not the first param after cmd_start.
      *  In case of failure when writing, the last error is set to NSAPI_ERROR_DEVICE_ERROR.
@@ -225,7 +243,7 @@ public:
      *  @param param string to be written to modem as AT command subparameter
      *  @param useQuotations flag indicating whether the string should be included in quotation marks
      */
-    void write_string(const char* param,  bool useQuotations = true);
+    void write_string(const char *param,  bool useQuotations = true);
 
     /** Stops the AT command by writing command-line terminator CR to mark command as finished.
      */
@@ -291,6 +309,17 @@ public:
      */
     ssize_t read_string(char *str, size_t size, bool read_even_stop_tag = false);
 
+    /** Reads chars representing hex ascii values and converts them to the corresponding chars.
+     *  For example: "4156" to "AV".
+     *  Terminates with null. Skips the quotation marks.
+     *  Stops on delimiter or stop tag.
+     *
+     *  @param str output buffer for the read
+     *  @param size maximum number of chars to output
+     *  @return length of output string or -1 in case of read timeout before delimiter or stop tag is found
+     */
+    ssize_t read_hex_string(char *str, size_t size);
+
     /** Reads as string and converts result to integer. Supports only positive integers.
      *
      *  @return the positive integer or -1 in case of error.
@@ -338,16 +367,22 @@ public:
      */
     bool consume_to_stop_tag();
 
-    /**  Sets _debug_on flag.
-     *
-     *  @param enable value to be set for _debug_on flag
-     */
-    void enable_debug(bool enable);
-
     /** Return the last 3GPP error code.
      *  @return last 3GPP error code
      */
     int get_3gpp_error();
+
+public: // just for debugging
+    /**
+     * AT debugging, when enabled will print all data read and written,
+     * non-printable chars are printed as "[%d]".
+     *
+     * AT debug can be enabled at compile time using MBED_CONF_CELLULAR_DEBUG_AT flag or at runtime
+     * calling set_debug(). Note that MBED_CONF_MBED_TRACE_ENABLE must also be enabled.
+     *
+     *  @param debug_on Enable/disable debugging
+     */
+    void set_debug(bool debug_on);
 
 private:
 
@@ -398,21 +433,28 @@ private:
     bool _debug_on;
     bool _cmd_start;
 
+    // time when a command or an URC processing was started
+    uint64_t _start_time;
+
     // Gets char from receiving buffer.
     // Resets and fills the buffer if all are already read (receiving position equals receiving length).
+    // Returns a next char or -1 on failure (also sets error flag)
     int get_char();
     // Sets to 0 the reading position, reading length and the whole buffer content.
     void reset_buffer();
     // Reading position set to 0 and buffer's unread content moved to beginning
     void rewind_buffer();
+    // Calculate remaining time for polling based on request start time and AT timeout.
+    // Returns 0 or time in ms for polling.
+    int poll_timeout(bool wait_for_timeout = true);
     // Reads from serial to receiving buffer.
-    // Returns on first successful read OR on timeout.
-    void fill_buffer();
+    // Returns true on successful read OR false on timeout.
+    bool fill_buffer(bool wait_for_timeout = true);
 
-    void set_tag(tag_t* tag_dest, const char *tag_seq);
+    void set_tag(tag_t *tag_dest, const char *tag_seq);
 
     // Rewinds the receiving buffer and compares it against given str.
-    bool match(const char* str, size_t size);
+    bool match(const char *str, size_t size);
     // Iterates URCs and checks if they match the receiving buffer content.
     // If URC match sets the scope to information response and after urc's cb returns
     // finishes the information response scope(consumes to CRLF).
@@ -446,7 +488,7 @@ private:
     void set_3gpp_error(int err, DeviceErrorType error_type);
 
     bool check_cmd_send();
-    ssize_t write(const void *data, size_t len);
+    size_t write(const void *data, size_t len);
 
     /** Copy content of one char buffer to another buffer and sets NULL terminator
      *
@@ -466,7 +508,15 @@ private:
      *
      * @return pointer to first occurrence of src in dest
      */
-    const char* mem_str(const char* dest, size_t dest_len, const char* src, size_t src_len);
+    const char *mem_str(const char *dest, size_t dest_len, const char *src, size_t src_len);
+
+    // check is urc is already added
+    bool find_urc_handler(const char *prefix, mbed::Callback<void()> callback);
+
+    ssize_t read(char *buf, size_t size, bool read_even_stop_tag, bool hex);
+
+    // print contents of a buffer to trace log
+    void debug_print(char *p, int len);
 };
 
 } // namespace mbed

@@ -287,7 +287,7 @@ void Test_ATHandler::test_ATHandler_cmd_start()
     ATHandler at(&fh1, que, 0, ",");
     mbed_poll_stub::revents_value = POLLOUT;
     mbed_poll_stub::int_value = 1;
-    fh1.size_value = 1;
+    fh1.size_value = 3;
     at.cmd_start("s");
     mbed_poll_stub::revents_value = POLLIN;
     mbed_poll_stub::int_value = 0;
@@ -303,12 +303,13 @@ void Test_ATHandler::test_ATHandler_write_int()
     FileHandle_stub fh1;
 
     ATHandler at(&fh1, que, 0, ",");
+    fh1.size_value = -1;
     at.write_int(4);
 
     at.clear_error();
     mbed_poll_stub::revents_value = POLLOUT;
     mbed_poll_stub::int_value = 1;
-    fh1.size_value = 1;
+    fh1.size_value = 6;
     at.write_int(4);
 
     at.write_int(2147483647);
@@ -331,7 +332,7 @@ void Test_ATHandler::test_ATHandler_write_string()
     at.clear_error();
     mbed_poll_stub::revents_value = POLLOUT;
     mbed_poll_stub::int_value = 1;
-    fh1.size_value = 1;
+    fh1.size_value = -1;
     at.cmd_start("s");
     at.write_string("help", true);
     CHECK(NSAPI_ERROR_DEVICE_ERROR == at.get_last_error());
@@ -339,7 +340,7 @@ void Test_ATHandler::test_ATHandler_write_string()
     at.clear_error();
     mbed_poll_stub::revents_value = POLLOUT;
     mbed_poll_stub::int_value = 1;
-    fh1.size_value = 3;
+    fh1.size_value = -1;
     at.write_string("help", true);
     CHECK(NSAPI_ERROR_DEVICE_ERROR == at.get_last_error());
 
@@ -357,6 +358,7 @@ void Test_ATHandler::test_ATHandler_cmd_stop()
     FileHandle_stub fh1;
 
     ATHandler at(&fh1, que, 0, ",");
+    fh1.size_value = -1;
     at.cmd_stop();
 
     at.write_string("help", true);
@@ -371,6 +373,7 @@ void Test_ATHandler::test_ATHandler_write_bytes()
     FileHandle_stub fh1;
 
     ATHandler at(&fh1, que, 0, ",");
+    fh1.size_value = -1;
     uint8_t data[] = "data";
     at.write_bytes(data, 4);
 
@@ -476,6 +479,9 @@ void Test_ATHandler::test_ATHandler_read_bytes()
     char table[] = "ssssssssssssssssssssssssssssOK\r\n\0";
     filehandle_stub_table = table;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table);
+
 
     at.clear_error();
     CHECK(5 == at.read_bytes(buf, 5));
@@ -488,57 +494,66 @@ void Test_ATHandler::test_ATHandler_read_string()
 
     ATHandler at(&fh1, que, 0, ",");
 
+    at.clear_error();
     char table[] = "\"s,\"OK\r\n\0";
     filehandle_stub_table = table;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table);
 
     char buf[5];
     uint8_t buf2[5];
-    at.flush();
-    at.clear_error();
     at.resp_start();
     at.read_bytes(buf2, 5);
     CHECK(-1 == at.read_string(buf, 15));
+    at.flush();
+    at.clear_error();
 
     filehandle_stub_table = table;
     filehandle_stub_table_pos = 0;
 
-    at.flush();
-    at.clear_error();
     at.resp_start();
     at.read_bytes(buf2, 1);
     CHECK(1 == at.read_string(buf, 5, true));
+    at.flush();
+    at.clear_error();
 
     char table2[] = "\"s\"OK\r\n\0";
     filehandle_stub_table = table2;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table2);
 
-    at.flush();
-    at.clear_error();
     at.resp_start();
     at.read_bytes(buf2, 1);
     CHECK(1 == at.read_string(buf, 5, true));
+    at.flush();
+    at.clear_error();
 
     char table3[] = "sss\rsss\0";
     filehandle_stub_table = table3;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table);
 
-    at.flush();
-    at.clear_error();
     at.resp_start("s");
     at.read_string(buf, 5, true);
+    at.flush();
+    at.clear_error();
 
     char table4[] = "\"s\"\0";
     filehandle_stub_table = table4;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table);
 
-    at.flush();
-    at.clear_error();
     at.resp_start("s");
     at.read_string(buf, 5, true);
 
     filehandle_stub_table = NULL;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLOUT;
+    mbed_poll_stub::int_value = 0;
 }
 
 void Test_ATHandler::test_ATHandler_read_int()
@@ -550,24 +565,27 @@ void Test_ATHandler::test_ATHandler_read_int()
 
     int32_t ret= at.read_int();
     CHECK(-1 == ret);
+    at.clear_error();
 
     char table[] = "\",\"OK\r\n\0";
     filehandle_stub_table = table;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table);
 
-    at.flush();
-    at.clear_error();
     at.resp_start();
 
     ret= at.read_int();
     CHECK(-1 == ret);
+    at.flush();
+    at.clear_error();
 
     char table2[] = "\"2,\"OK\r\n\0";
     filehandle_stub_table = table2;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table2);
 
-    at.flush();
-    at.clear_error();
     at.resp_start();
 
     ret= at.read_int();
@@ -691,23 +709,29 @@ void Test_ATHandler::test_ATHandler_info_resp()
     at.resp_start();
     CHECK(!at.info_resp());
 
+    at.flush();
+    at.clear_error();
+
     char table2[] = "21 OK\r\n\0";
     filehandle_stub_table = table2;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table2);
 
-    at.flush();
-    at.clear_error();
     at.resp_start("21");
     CHECK(at.info_resp());
 
     CHECK(!at.info_resp());
 
+    at.flush();
+    at.clear_error();
+
     char table3[] = "21 OK\r\n\0";
     filehandle_stub_table = table3;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table3);
 
-    at.flush();
-    at.clear_error();
     CHECK(at.info_resp());
 }
 
@@ -719,25 +743,27 @@ void Test_ATHandler::test_ATHandler_info_elem()
     char table[] = "21 OK\r\n\0";
     filehandle_stub_table = table;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table);
 
     ATHandler at(&fh1, que, 0, ",");
-    CHECK(!at.info_elem(char(79)));
+    CHECK(!at.info_elem('O'));
+    at.flush();
 
     char table2[] = "21 OK\r\n\0";
     filehandle_stub_table = table2;
     filehandle_stub_table_pos = 0;
+    mbed_poll_stub::revents_value = POLLIN;
+    mbed_poll_stub::int_value = strlen(table2);
 
-    at.flush();
     at.clear_error();
     at.resp_start("21");
-    CHECK(at.info_elem(char(79)));
-
-    CHECK(at.info_elem('2'));
+    CHECK(at.info_elem('O'));
+    at.flush();
 
     filehandle_stub_table = NULL;
     filehandle_stub_table_pos = 0;
 
-    at.flush();
     at.clear_error();
     at.resp_start("21");
     CHECK(!at.info_elem('2'));
@@ -752,15 +778,15 @@ void Test_ATHandler::test_ATHandler_consume_to_stop_tag()
     CHECK(at.consume_to_stop_tag());
 }
 
-void Test_ATHandler::test_ATHandler_enable_debug()
+void Test_ATHandler::test_ATHandler_set_debug()
 {
     EventQueue que;
     FileHandle_stub fh1;
 
     ATHandler at(&fh1, que, 0, ",");
-    at.enable_debug(true);
+    at.set_debug(true);
 
-    at.enable_debug(false);
+    at.set_debug(false);
 }
 
 void Test_ATHandler::test_ATHandler_get_3gpp_error()

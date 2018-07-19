@@ -20,8 +20,10 @@ TEST_SRC_FILES = \
         ../../stubs/mbed_poll_stub.cpp \
         ../../stubs/Timer_stub.cpp \
         ../../stubs/equeue_stub.cpp \
+        ../../stubs/Kernel.cpp \
+        ../../stubs/Thread_stub.cpp \
 
 include ../../MakefileWorker.mk
 
-CPPUTESTFLAGS += -DFEA_TRACE_SUPPORT
+CPPUTESTFLAGS += -DFEA_TRACE_SUPPORT -DMBED_CONF_CELLULAR_DEBUG_AT=1
 

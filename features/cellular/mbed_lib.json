@@ -12,6 +12,10 @@
         "auth-command": {
             "help": "Command to use for cellular authentication",
             "value": "\"AT+CGAUTH=\""
+        },
+        "debug-at": {
+            "help": "Enable AT debug prints",
+            "value": false
         }
     }
 }

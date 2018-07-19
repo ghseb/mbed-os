@@ -82,6 +82,10 @@
 								<option id="iar.arm.toolchain.compiler.option.defines.v8.0.0.1832548969" name="Defined Symbols:" superClass="iar.arm.toolchain.compiler.option.defines.v8.0.0" useByScannerDiscovery="false" valueType="definedSymbols">
 									{% for symbol in c_symbols %}
                                     <listOptionValue builtIn="false" value="{{symbol}}"/>
+                                    <listOptionValue builtIn="true" value="__INT8_T_TYPE__"/>
+                                    <listOptionValue builtIn="true" value="__INT16_T_TYPE__"/>
+                                    <listOptionValue builtIn="true" value="__INT32_T_TYPE__"/>
+                                    <listOptionValue builtIn="true" value="__INT64_T_TYPE__"/>
                                     {% endfor %}
 								</option>
 								<option id="iar.arm.toolchain.compiler.option.preincludeFile.v8.0.0.1235929933" name="Preinclude file:" superClass="iar.arm.toolchain.compiler.option.preincludeFile.v8.0.0" useByScannerDiscovery="false" valueType="includeFiles">

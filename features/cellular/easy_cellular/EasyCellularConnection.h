@@ -16,7 +16,6 @@
  */
 
 #ifndef EASY_CELLULAR_CONNECTION_H
-
 #define EASY_CELLULAR_CONNECTION_H
 
 #include "CellularConnectionFSM.h"
@@ -72,6 +71,8 @@ public:
                                   const char *uname = 0,
                                   const char *pwd = 0);
 
+    nsapi_error_t cancel();
+
     /** Start the interface
      *
      *  Attempts to connect to a Cellular network.
@@ -116,7 +117,18 @@ public:
      */
     virtual const char *get_gateway();
 
+    /** Get the imei
+     *
+     *  @return         Null-terminated representation of the imei
+     *                  or null if the imei could not be read
+     */
+    virtual const char *get_imei();
+
     /** Register callback for status reporting
+     *
+     *  The specified status callback function will be called on status changes
+     *  on the network. The parameters on the callback are the event type and
+     *  event-type dependent reason parameter.
      *
      *  @param status_cb The callback for status changes
      */
@@ -128,6 +140,12 @@ public:
      */
     void modem_debug_on(bool on);
 
+    /** Sets the operator plmn which is used when registering to a network specified by plmn. If plmn is not set then automatic
+     *  registering is used when registering to a cellular network.
+     *
+     *  @param plmn operator in numeric format. See more from 3GPP TS 27.007 chapter 7.3.
+     */
+    void set_plmn(const char* plmn);
 protected:
 
     /** Provide access to the NetworkStack object
@@ -142,11 +160,13 @@ private:
      *  @return true to continue state machine
      */
     bool cellular_status(int state, int next_state);
+    void network_callback(nsapi_event_t ev, intptr_t ptr);
     nsapi_error_t init();
     nsapi_error_t check_connect();
 
     bool _is_connected;
     bool _is_initialized;
+    bool _cancel;
 #if USE_APN_LOOKUP
     bool _credentials_set;
 #endif // #if USE_APN_LOOKUP
@@ -154,8 +174,9 @@ private:
 
     UARTSerial _cellularSerial;
     rtos::Semaphore _cellularSemaphore;
-    CellularConnectionFSM _cellularConnectionFSM;
+    CellularConnectionFSM *_cellularConnectionFSM;
     nsapi_error_t _credentials_err;
+    Callback<void(nsapi_event_t, intptr_t)> _status_cb;
 };
 
 } // namespace

@@ -248,8 +248,11 @@ LoRaPHYKR920::LoRaPHYKR920(LoRaWANTimeHandler &lora_time)
 
     // Channels
     channels[0] = KR920_LC1;
+    channels[0].band = 0;
     channels[1] = KR920_LC2;
+    channels[1].band = 0;
     channels[2] = KR920_LC3;
+    channels[2].band = 0;
 
     // Initialize the channels default mask
     default_channel_mask[0] = LC( 1 ) + LC( 2 ) + LC( 3 );
@@ -339,7 +342,7 @@ int8_t LoRaPHYKR920::get_max_eirp(uint32_t freq)
 }
 
 
-bool LoRaPHYKR920::verify_frequency(uint32_t freq)
+bool LoRaPHYKR920::verify_frequency_for_band(uint32_t freq, uint8_t band) const
 {
     uint32_t tmp_freq = freq;
 

@@ -117,7 +117,7 @@ class ConfigParameter(object):
                                       unit_name, unit_kind, label)))
         prefix = temp[0]
         # Check if the given parameter prefix matches the expected prefix
-        if (unit_kind == "library" and prefix != unit_name) or \
+        if (unit_kind == "library" and prefix not in [unit_name, "target"]) or \
            (unit_kind == "target" and prefix != "target"):
             raise ConfigException(
                 "Invalid prefix '%s' for parameter name '%s' in '%s'" %
@@ -369,7 +369,7 @@ class Config(object):
 
     # Allowed features in configurations
     __allowed_features = [
-        "UVISOR", "BLE", "CLIENT", "IPV4", "LWIP", "COMMON_PAL", "STORAGE", "NANOSTACK",
+        "UVISOR", "BLE", "CLIENT", "IPV4", "LWIP", "COMMON_PAL", "STORAGE", "NANOSTACK","CRYPTOCELL310",
         # Nanostack configurations
         "LOWPAN_BORDER_ROUTER", "LOWPAN_HOST", "LOWPAN_ROUTER", "NANOSTACK_FULL", "THREAD_BORDER_ROUTER", "THREAD_END_DEVICE", "THREAD_ROUTER", "ETHERNET_HOST"
         ]
@@ -393,7 +393,8 @@ class Config(object):
             return self.format_validation_error(error.context[0], path)
         else:
             return "in {} element {}: {}".format(
-                path, str(".".join(str(p) for p in error.absolute_path)), error.message)
+                path, ".".join(p for p in error.absolute_path),
+                error.message.replace('u\'','\''))
 
     def __init__(self, tgt, top_level_dirs=None, app_config=None):
         """Construct a mbed configuration
@@ -649,7 +650,7 @@ class Config(object):
             new_size = Config._align_floor(start + new_size, self.sectors) - start
             yield Region("application", start, new_size, True, None)
             start += new_size
-            if self.target.header_format:
+            if self.target.header_format and not self.target.bootloader_img:
                 if self.target.header_offset:
                     start = self._assign_new_offset(
                         rom_start, start, self.target.header_offset, "header")
@@ -857,21 +858,20 @@ class Config(object):
                 params[full_name].set_value(val, tname, "target")
         return params
 
-    def get_lib_config_data(self):
+    def get_lib_config_data(self, target_data):
         """ Read and interpret configuration data defined by libraries. It is
         assumed that "add_config_files" above was already called and the library
         configuration data exists in self.lib_config_data
 
         Arguments: None
         """
-        all_params, macros = {}, {}
+        macros = {}
         for lib_name, lib_data in self.lib_config_data.items():
-            all_params.update(self._process_config_and_overrides(lib_data, {},
-                                                                 lib_name,
-                                                                 "library"))
+            self._process_config_and_overrides(
+                lib_data, target_data, lib_name, "library")
             _process_macros(lib_data.get("macros", []), macros, lib_name,
                             "library")
-        return all_params, macros
+        return target_data, macros
 
     def get_app_config_data(self, params, macros):
         """ Read and interpret the configuration data defined by the target. The
@@ -901,10 +901,9 @@ class Config(object):
         Arguments: None
         """
         all_params = self.get_target_config_data()
-        lib_params, macros = self.get_lib_config_data()
-        all_params.update(lib_params)
-        self.get_app_config_data(all_params, macros)
-        return all_params, macros
+        lib_params, macros = self.get_lib_config_data(all_params)
+        self.get_app_config_data(lib_params, macros)
+        return lib_params, macros
 
     @staticmethod
     def _check_required_parameters(params):
