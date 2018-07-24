@@ -25,6 +25,7 @@
 #include "CellularSMS.h"
 #include "CellularPower.h"
 #include "CellularInformation.h"
+#include "M2mCellularInterface.h"
 #include "NetworkStack.h"
 #include "EventQueue.h"
 
@@ -79,6 +80,13 @@ public:
      *  @return      New instance of interface CellularInformation.
      */
     virtual CellularInformation *open_information(FileHandle *fh) = 0;
+
+    /** Create new M2mCellularInterface.
+     *
+     *  @param fh    file handle used in communication to modem. Can be for example UART handle.
+     *  @return      New instance of interface M2mCellularInterface.
+     */
+    virtual M2mCellularInterface *open_m2m_cellular_interface(FileHandle *fh) = 0;
 
     /** Closes the opened CellularNetwork by deleting the CellularNetwork instance.
      */
