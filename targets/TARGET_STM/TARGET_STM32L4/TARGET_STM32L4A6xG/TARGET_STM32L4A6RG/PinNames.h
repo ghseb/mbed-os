@@ -113,7 +113,7 @@ typedef enum {
 	USBRX		= PA_3,		//RS232 - UART2 RX
 
 	LED1		= NC,
-
+	LED2		= NC,
 } PinName;
 
 #ifdef __cplusplus
