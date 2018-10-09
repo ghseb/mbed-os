@@ -14,18 +14,18 @@
 //						|                   |   |
 //      0x20017000      |                   v   |		CSTACK end
 //                      |-----------------------|                
-//      0x20016FFF      |                   ^   |      	HEAP end 
-//                      |                   |   |
-//                      |                   |   |
-//                      |       HEAP        |   |      
-//                      |       grows       |   |
-//                      |       up          |   |		68Byte (min. 16kByte for Micropython)
-//                      |                   |   |
-//                      |                   |   |
-//      0x20006000      |                   |   |		HEAP start
-//                      |-----------------------|
-//      0x20005FFF      |                       |
-//                      |        BSS segment    |		24kByte 
+//      0x20016FFF      |                       |      
+//                      |                       |
+//                      |                       |
+//                      |                       |      
+//                      |                       |
+//                      |                       |		
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |                       |
+//                      |        BSS segment    |		92kkByte 
 //                      |                       |
 // 						|        Data segment   |
 //                      |                       |
@@ -44,22 +44,22 @@
 //
 //                      SRAM2 description (32kByte)
 //      0x10007FFF      -------------------------            
-//      SRAM2 end       |                      	|                  
-//          			|                      	|
-//                      |                		|
-//                      |       reserved        |		32kByte-392Byte
-//                      |            			|		 
-//                      |                       |
-// 						|       				|
-//                      |                       |		
-//                      |                       |
-//                      |                       |      	
-//                      |                  		|             
-//                      |                       |
-//                      |                       |
-//                      |                       |
-//                		|                       |
-//		0x10000188		|                       |
+//      SRAM2 end       |                   ^  	|                  
+//          			|                   |  	|
+//                      |                	|   |
+//                      |       HEAP        |   |		32kByte-392Byte
+//                      |       grows 		|   |		(min. 16kByte for Micropython) 
+//                      |       up          |   |
+// 						|       			|   |
+//                      |       			|   |		
+//                      |       			|   |
+//                      |       			|   |      	
+//                      |       			|   |             
+//                      |       			|   |
+//                      |       			|   |
+//                      |       			|   |
+//                		|       			|   |
+//		0x10000188		|       			|   |
 //                      |-----------------------|
 //      0x10000187      |          				|                      
 //						|Interrupt Vector Table |	     392Byte reserved to copy IVT
@@ -193,12 +193,12 @@ define region QSPI_FLASH_region = mem:[from __region_QSPI_FLASH_start__ to __reg
 
 /* Stack and Heap */
 /* CSTACK:  4kByte = 0x1000 */
-/* HEAP:   68kByte = 0x11000 */
+/* HEAP:  32kByte = 0x8000 */
 define symbol __size_cstack__ = 0x1000;
-define symbol __size_heap__   = 0x17000;  
+define symbol __size_heap__   = 0x7e78;  
 define block CSTACK    with alignment = 8, size = __size_cstack__   { };
 define block HEAP      with alignment = 8, size = __size_heap__     { };
-define block HEAPSTACK with fixed order { block HEAP, block CSTACK };
+// define block HEAPSTACK with fixed order { block HEAP, block CSTACK };
 
 
 /* handle initialization */
@@ -210,9 +210,9 @@ place at address mem:__intvec_start__ { readonly section .intvec };			/* place s
 place at address mem: 0x080FFFF0 {readonly section .fwversioninfo};     	/* place the firmware version string in front of the checksum */
 place at address mem: 0x080FFFFC {readonly section .checksum};        		/* place the four byte long checksum at the end of the internal flash */
 place in ROM_region   { readonly };											/* place constants, initializers and code in ROM: .rodata, .data_init, .text */
-place at end of SRAM1_region {block HEAPSTACK};								/* place heap and stack at the end of SRAM1 */
+place at end of SRAM1_region {block CSTACK, readwrite};								/* place heap and stack at the end of SRAM1 */
 //place at start of SRAM1_region {readwrite};									/* place .data, .bss, and .noinit, (readwrite) normally here */
-place in SRAM2_region {readwrite};									/* place .data, .bss, and .noinit, (readwrite) normally here */
+place in SRAM2_region {block HEAP};									/* place .data, .bss, and .noinit, (readwrite) normally here */
 //place in SRAM2_region { };													/* reserved */
 place in QSPI_FLASH_region { };
 
