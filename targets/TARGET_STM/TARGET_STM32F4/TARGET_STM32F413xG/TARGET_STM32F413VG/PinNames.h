@@ -175,8 +175,8 @@ typedef enum {
     D14         = PB_9,
     D15         = PB_8,
 
-	USBTX       = PD_5,
-	USBRX       = PD_6,
+	USBTX       = PA_12,
+	USBRX       = PA_11,
 
 //	LED1 		= LED_RED,
 //	LED2		= OUT_2,
