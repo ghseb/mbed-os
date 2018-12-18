@@ -749,7 +749,7 @@ void ATHandler::resp(const char *prefix, bool check_urc)
             return;
         }
 
-        if (prefix && match(prefix, strlen(prefix))) {
+        if (prefix && strlen(prefix) && match(prefix, strlen(prefix))) {
             _prefix_matched = true;
             return;
         }
