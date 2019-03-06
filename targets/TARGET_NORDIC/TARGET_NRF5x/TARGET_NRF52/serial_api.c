@@ -45,33 +45,27 @@
 #include "nrf_drv_common.h"
 #include "nrf_atfifo.h"
 #include "app_util_platform.h"
-#include "nrf_rtc.h"
 #include "pinmap_ex.h"
+#include "nrf_drv_ppi.h"
+#include "nrf_drv_gpiote.h"
 
 #include "platform/mbed_critical.h"
 
 #if UART0_ENABLED == 0
 #error UART0 is disabled. DEVICE_SERIAL must also be disabled to continue.
-#endif 
+#endif
 
 
 /***
- *       _____             __ _                       _   _             
- *      / ____|           / _(_)                     | | (_)            
- *     | |     ___  _ __ | |_ _  __ _ _   _ _ __ __ _| |_ _  ___  _ __  
- *     | |    / _ \| '_ \|  _| |/ _` | | | | '__/ _` | __| |/ _ \| '_ \ 
+ *       _____             __ _                       _   _
+ *      / ____|           / _(_)                     | | (_)
+ *     | |     ___  _ __ | |_ _  __ _ _   _ _ __ __ _| |_ _  ___  _ __
+ *     | |    / _ \| '_ \|  _| |/ _` | | | | '__/ _` | __| |/ _ \| '_ \
  *     | |___| (_) | | | | | | | (_| | |_| | | | (_| | |_| | (_) | | | |
  *      \_____\___/|_| |_|_| |_|\__, |\__,_|_|  \__,_|\__|_|\___/|_| |_|
- *                               __/ |                                  
- *                              |___/                                   
+ *                               __/ |
+ *                              |___/
  */
-
-/**
- * Idle timeout between characters before DMA buffer is flushed.
- */
-#ifndef MBED_CONF_NORDIC_UART_TIMEOUT_US
-#define MBED_CONF_NORDIC_UART_TIMEOUT_US 2000
-#endif
 
 /**
  * Default FIFO buffer size for UARTE0.
@@ -88,57 +82,23 @@
 #endif
 
 /**
- * Default DMA buffer size. Each instance has two DMA buffers.
- */
-#ifndef MBED_CONF_NORDIC_UART_DMA_SIZE
-#define MBED_CONF_NORDIC_UART_DMA_SIZE 8
-#else
-#if MBED_CONF_NORDIC_UART_DMA_SIZE < 5
-#error MBED_CONF_NORDIC_UART_DMA_SIZE must be at least 5 bytes
-#endif
-#if MBED_CONF_NORDIC_UART_DMA_SIZE > 255
-#error MBED_CONF_NORDIC_UART_DMA_SIZE must be less than 256 bytes
-#endif
-#endif
-
-/**
  * Internal short names.
  */
-#define IDLE_TIMEOUT_US         MBED_CONF_NORDIC_UART_TIMEOUT_US
 #define UART0_FIFO_BUFFER_SIZE  MBED_CONF_NORDIC_UART_0_FIFO_SIZE
 #define UART1_FIFO_BUFFER_SIZE  MBED_CONF_NORDIC_UART_1_FIFO_SIZE
-#define DMA_BUFFER_SIZE         MBED_CONF_NORDIC_UART_DMA_SIZE
+#define DMA_BUFFER_SIZE         1
 #define NUMBER_OF_BANKS         2
-
-/**
- * Default timer delay for callbacks.
- */
-#define CALLBACK_DELAY_US       100
-
-/**
- * Use RTC2 for idle timeouts and deferred callbacks. 
- * Each channel is dedicated to one particular task.
- */
-#define UARTE0_RTC_TIMEOUT_CHANNEL  0
-#define UARTE0_RTC_CALLBACK_CHANNEL 1
-#define UARTE1_RTC_TIMEOUT_CHANNEL  2
-#define UARTE1_RTC_CALLBACK_CHANNEL 3
-
-/**
- * RTC frequency.
- */
-#define RTC_FREQUENCY   32768
-
+#define FIFO_MIN                3
 
 /***
- *      _______                   _       __     
- *     |__   __|                 | |     / _|    
- *        | |_   _ _ __   ___  __| | ___| |_ ___ 
+ *      _______                   _       __
+ *     |__   __|                 | |     / _|
+ *        | |_   _ _ __   ___  __| | ___| |_ ___
  *        | | | | | '_ \ / _ \/ _` |/ _ \  _/ __|
  *        | | |_| | |_) |  __/ (_| |  __/ | \__ \
  *        |_|\__, | .__/ \___|\__,_|\___|_| |___/
- *            __/ | |                            
- *           |___/|_|                            
+ *            __/ | |
+ *           |___/|_|
  */
 
 /**
@@ -161,17 +121,14 @@ typedef enum
 
 /**
  * Internal struct for storing each UARTE instance's state:
- * 
+ *
  *  owner: pointer to serial object currently using instance.
  *  buffer: buffers assigned to EasyDMA.
- *  rxdrdy_counter: count received characters for idle detection.
- *  endrx_counter: count filled DMA buffers for idle detection.
  *  tx_data: 1 byte Tx buffer for blocking putc.
  *  tx_in_progress: mutex for atomic Tx.
  *  rx_in_progress: mutex for atomic Rx when using async API.
  *  tx_asynch: set synch or asynch mode for Tx.
  *  rx_asynch: set synch or asynch mode for Rx.
- *  ticker_is_running: flag for enabling/disabling idle timer.
  *  callback_posted: flag for posting only one callback.
  *  active_bank: flag for buffer swapping.
  *  fifo: pointer to the FIFO buffer.
@@ -179,18 +136,19 @@ typedef enum
 typedef struct {
     struct serial_s *owner;
     uint8_t buffer[NUMBER_OF_BANKS][DMA_BUFFER_SIZE];
-    uint32_t rxdrdy_counter;
-    uint32_t endrx_counter;
     uint32_t usage_counter;
     uint8_t tx_data;
     volatile uint8_t tx_in_progress;
     volatile uint8_t rx_in_progress;
     bool tx_asynch;
     bool rx_asynch;
-    bool ticker_is_running;
     bool callback_posted;
     uint8_t active_bank;
     nrf_atfifo_t *fifo;
+    uint32_t fifo_free_count;
+    nrf_ppi_channel_t ppi_rts;
+    nrf_drv_gpiote_pin_t rts;
+    bool rx_suspended;
 } nordic_uart_state_t;
 
 /**
@@ -203,14 +161,14 @@ typedef enum {
 
 
 /***
- *       _____ _       _           _  __      __        _       _     _           
- *      / ____| |     | |         | | \ \    / /       (_)     | |   | |          
- *     | |  __| | ___ | |__   __ _| |  \ \  / /_ _ _ __ _  __ _| |__ | | ___  ___ 
+ *       _____ _       _           _  __      __        _       _     _
+ *      / ____| |     | |         | | \ \    / /       (_)     | |   | |
+ *     | |  __| | ___ | |__   __ _| |  \ \  / /_ _ _ __ _  __ _| |__ | | ___  ___
  *     | | |_ | |/ _ \| '_ \ / _` | |   \ \/ / _` | '__| |/ _` | '_ \| |/ _ \/ __|
  *     | |__| | | (_) | |_) | (_| | |    \  / (_| | |  | | (_| | |_) | |  __/\__ \
  *      \_____|_|\___/|_.__/ \__,_|_|     \/ \__,_|_|  |_|\__,_|_.__/|_|\___||___/
- *                                                                                
- *                                                                                
+ *
+ *
  */
 
 /**
@@ -229,7 +187,7 @@ static NRF_UARTE_Type *nordic_nrf5_uart_register[UART_ENABLED_COUNT] = {
 };
 
 /**
- * @brief      Create atomic fifo using macro. Macro defines static arrays 
+ * @brief      Create atomic fifo using macro. Macro defines static arrays
  *             for buffer and internal state.
  */
 NRF_ATFIFO_DEF(nordic_nrf5_uart_fifo_0, uint8_t, UART0_FIFO_BUFFER_SIZE);
@@ -239,6 +197,14 @@ NRF_ATFIFO_DEF(nordic_nrf5_uart_fifo_1, uint8_t, UART1_FIFO_BUFFER_SIZE);
 #endif
 
 /**
+ * SWI IRQ mask.
+ */
+static uint8_t nordic_nrf5_uart_swi_mask_tx_0 = 0;
+static uint8_t nordic_nrf5_uart_swi_mask_rx_0 = 0;
+static uint8_t nordic_nrf5_uart_swi_mask_tx_1 = 0;
+static uint8_t nordic_nrf5_uart_swi_mask_rx_1 = 0;
+
+/**
  * Global variables expected by mbed_retarget.cpp for STDOUT.
  */
 int stdio_uart_inited = 0;
@@ -246,127 +212,18 @@ serial_t stdio_uart = { 0 };
 
 
 /***
- *       _____          _                    _______ _                     
- *      / ____|        | |                  |__   __(_)                    
- *     | |    _   _ ___| |_ ___  _ __ ___      | |   _ _ __ ___   ___ _ __ 
- *     | |   | | | / __| __/ _ \| '_ ` _ \     | |  | | '_ ` _ \ / _ \ '__|
- *     | |___| |_| \__ \ || (_) | | | | | |    | |  | | | | | | |  __/ |   
- *      \_____\__,_|___/\__\___/|_| |_| |_|    |_|  |_|_| |_| |_|\___|_|   
- *                                                                         
- *                                                                         
+ *       _____        __ _                            _____       _                             _
+ *      / ____|      / _| |                          |_   _|     | |                           | |
+ *     | (___   ___ | |_| |___      ____ _ _ __ ___    | |  _ __ | |_ ___ _ __ _ __ _   _ _ __ | |_
+ *      \___ \ / _ \|  _| __\ \ /\ / / _` | '__/ _ \   | | | '_ \| __/ _ \ '__| '__| | | | '_ \| __|
+ *      ____) | (_) | | | |_ \ V  V / (_| | | |  __/  _| |_| | | | ||  __/ |  | |  | |_| | |_) | |_
+ *     |_____/ \___/|_|  \__| \_/\_/ \__,_|_|  \___| |_____|_| |_|\__\___|_|  |_|   \__,_| .__/ \__|
+ *                                                                                       | |
+ *                                                                                       |_|
  */
 
 /**
- * @brief      Set timout for a particular channel in RTC2.
- *
- * @param[in]  timeout  The timeout
- * @param[in]  channel  The channel
- */
-static void nordic_custom_ticker_set(uint32_t timeout, int channel)
-{
-    /**
-     * Add timeout to current time and set as compare value for channel.
-     */
-    uint32_t now = nrf_rtc_counter_get(NRF_RTC2);
-    uint32_t ticksout = (timeout * RTC_FREQUENCY) / (1000 * 1000);
-    nrf_rtc_cc_set(NRF_RTC2, channel, ticksout + now);
-
-    /**
-     * Enable interrupt for channel.
-     */
-    uint32_t mask = nrf_rtc_int_get(NRF_RTC2);
-    nrf_rtc_int_enable(NRF_RTC2, mask | RTC_CHANNEL_INT_MASK(channel));
-}
-
-/**
- * @brief      Set idle timeout for particular instance. 
- *             This function translates instance number to RTC channel.
- *
- * @param[in]  instance  The instance
- */
-static void nordic_custom_ticker_set_timeout(int instance)
-{
-    if (instance == 0) {
-
-        nordic_custom_ticker_set(IDLE_TIMEOUT_US, UARTE0_RTC_TIMEOUT_CHANNEL);
-    }
-    else if (instance == 1) {
-
-        nordic_custom_ticker_set(IDLE_TIMEOUT_US, UARTE1_RTC_TIMEOUT_CHANNEL);
-    }
-}
-
-/**
- * @brief      Schedule callback for particular instance.
- *             This function translates instance number to RTC channel.
- *
- * @param[in]  instance  The instance
- */
-static void nordic_custom_ticker_set_callback(int instance)
-{
-    if (instance == 0) {
-
-        nordic_custom_ticker_set(CALLBACK_DELAY_US, UARTE0_RTC_CALLBACK_CHANNEL);
-    }
-    else if (instance == 1) {
-
-        nordic_custom_ticker_set(CALLBACK_DELAY_US, UARTE1_RTC_CALLBACK_CHANNEL);
-    }
-}
-
-
-/***
- *      _______ _                       _    _                 _ _           
- *     |__   __(_)                     | |  | |               | | |          
- *        | |   _ _ __ ___   ___ _ __  | |__| | __ _ _ __   __| | | ___ _ __ 
- *        | |  | | '_ ` _ \ / _ \ '__| |  __  |/ _` | '_ \ / _` | |/ _ \ '__|
- *        | |  | | | | | | |  __/ |    | |  | | (_| | | | | (_| | |  __/ |   
- *        |_|  |_|_| |_| |_|\___|_|    |_|  |_|\__,_|_| |_|\__,_|_|\___|_|   
- *                                                                           
- *                                                                           
- */
-
-/**
- * @brief      Interrupt handler for idle timeouts.
- *             This function fans out interrupts from ISR and 
- *             translates channel to instance.
- *
- * @param[in]  instance  The instance
- */
-static void nordic_nrf5_uart_timeout_handler(uint32_t instance)
-{
-    /**
-     * Check if any characters have been received or buffers been flushed 
-     * since the last idle timeout.
-     */
-    if ((nordic_nrf5_uart_state[instance].rxdrdy_counter > 0) || 
-        (nordic_nrf5_uart_state[instance].endrx_counter > 0)) {
-
-        /* Activity detected, reset timeout. */
-        nordic_custom_ticker_set_timeout(instance);
-
-    } else {
-
-        /* No activity detected, no timeout set. */
-        nordic_nrf5_uart_state[instance].ticker_is_running = false;
-
-        /** 
-         * Stop Rx, this triggers a buffer swap and copies data from 
-         * DMA buffer to FIFO buffer.
-         */
-        nrf_uarte_task_trigger(nordic_nrf5_uart_register[instance],
-                               NRF_UARTE_TASK_STOPRX);
-    }
-
-    /* reset activity counters. */
-    nordic_nrf5_uart_state[instance].rxdrdy_counter = 0;
-    nordic_nrf5_uart_state[instance].endrx_counter = 0;
-}
-
-/**
- * @brief      Interrupt handler for scheduled callbacks.
- *             This function fans out interrupts from ISR and
- *             translates channel to instance.
+ * @brief      SWI interrupt handler for signaling RxIrq handler.
  *
  * @param[in]  instance  The instance
  */
@@ -388,92 +245,169 @@ static void nordic_nrf5_uart_callback_handler(uint32_t instance)
 }
 
 /**
- * @brief      RTC2 ISR. Used for timeouts and scheduled callbacks.
+ * @brief      SWI interrupt handler for when the Tx buffer has been transmitted.
+ *
+ * @param[in]  instance  The instance
  */
-static void nordic_nrf5_rtc2_handler(void)
+static void nordic_nrf5_uart_event_handler_endtx(int instance)
 {
-    /* Channel 0 */
-    if (nrf_rtc_event_pending(NRF_RTC2, NRF_RTC_EVENT_COMPARE_0)) {
+    /* Release mutex. As the owner this call is safe. */
+    nordic_nrf5_uart_state[instance].tx_in_progress = 0;
 
-        /* Clear event and disable interrupt for channel. */
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_0);
+    /* Check if callback handler and Tx event mask is set. */
+    uart_irq_handler callback = (uart_irq_handler) nordic_nrf5_uart_state[instance].owner->handler;
+    uint32_t mask = nordic_nrf5_uart_state[instance].owner->mask;
 
-        uint32_t mask = nrf_rtc_int_get(NRF_RTC2);
-        nrf_rtc_int_enable(NRF_RTC2, mask & ~NRF_RTC_INT_COMPARE0_MASK);
+    if (callback && (mask & NORDIC_TX_IRQ)) {
 
-        /* Call timeout handler with instance ID. */
-        nordic_nrf5_uart_timeout_handler(0);
+        /* Invoke callback function. */
+        uint32_t context = nordic_nrf5_uart_state[instance].owner->context;
+        callback(context, TxIrq);
+    }
+}
+
+/**
+ * @brief      Asynchronous event handler for when Tx DMA buffer has been sent.
+ *
+ * @param[in]  instance  The instance
+ */
+#if DEVICE_SERIAL_ASYNCH
+static void nordic_nrf5_uart_event_handler_endtx_asynch(int instance)
+{
+    /* Set Tx done and reset Tx mode to be not asynchronous. */
+    nordic_nrf5_uart_state[instance].tx_in_progress = 0;
+    nordic_nrf5_uart_state[instance].tx_asynch = false;
+
+    /* Cast handler to callback function pointer. */
+    void (*callback)(void) = (void (*)(void)) nordic_nrf5_uart_state[instance].owner->tx_handler;
+    uint32_t mask = nordic_nrf5_uart_state[instance].owner->tx_mask;
+
+    /* Signal error if event mask matches and event handler is set. */
+    if (callback && (mask & SERIAL_EVENT_TX_COMPLETE)) {
+
+        /* Store event value so it can be read back. */
+        nordic_nrf5_uart_state[instance].owner->tx_event = SERIAL_EVENT_TX_COMPLETE;
+
+        /* Signal callback handler. */
+        callback();
+    }
+}
+#endif
+
+static void nordic_nrf5_uart_swi0(void)
+{
+    if (nordic_nrf5_uart_swi_mask_tx_0) {
+
+        nordic_nrf5_uart_swi_mask_tx_0 = 0;
+
+#if DEVICE_SERIAL_ASYNCH
+        if (nordic_nrf5_uart_state[0].tx_asynch) {
+
+            nordic_nrf5_uart_event_handler_endtx_asynch(0);
+        } else
+#endif
+        {
+            nordic_nrf5_uart_event_handler_endtx(0);
+        }
     }
 
-    /* Channel 1 */
-    if (nrf_rtc_event_pending(NRF_RTC2, NRF_RTC_EVENT_COMPARE_1)) {
+    if (nordic_nrf5_uart_swi_mask_rx_0) {
 
-        /* Clear event and disable interrupt for channel. */
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_1);
+        nordic_nrf5_uart_swi_mask_rx_0 = 0;
 
-        uint32_t mask = nrf_rtc_int_get(NRF_RTC2);
-        nrf_rtc_int_enable(NRF_RTC2, mask & ~NRF_RTC_INT_COMPARE1_MASK);
-
-        /* Call callback handler with instance ID. */
         nordic_nrf5_uart_callback_handler(0);
     }
 
+
 #if UART1_ENABLED
-    /* Channel 2 */
-    if (nrf_rtc_event_pending(NRF_RTC2, NRF_RTC_EVENT_COMPARE_2)) {
+    if (nordic_nrf5_uart_swi_mask_tx_1) {
 
-        /* Clear event and disable interrupt for channel. */
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_2);
+        nordic_nrf5_uart_swi_mask_tx_1 = 0;
 
-        uint32_t mask = nrf_rtc_int_get(NRF_RTC2);
-        nrf_rtc_int_enable(NRF_RTC2, mask & ~NRF_RTC_INT_COMPARE2_MASK);
+#if DEVICE_SERIAL_ASYNCH
+        if (nordic_nrf5_uart_state[1].tx_asynch) {
 
-        /* Call timeout handler with instance ID. */
-        nordic_nrf5_uart_timeout_handler(1);
+            nordic_nrf5_uart_event_handler_endtx_asynch(1);
+        } else
+#endif
+        {
+            nordic_nrf5_uart_event_handler_endtx(1);
+        }
     }
 
-    /* Channel 3 */
-    if (nrf_rtc_event_pending(NRF_RTC2, NRF_RTC_EVENT_COMPARE_3)) {
+    if (nordic_nrf5_uart_swi_mask_rx_1) {
 
-        /* Clear event and disable interrupt for channel. */
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_3);
+        nordic_nrf5_uart_swi_mask_rx_1 = 0;
 
-        uint32_t mask = nrf_rtc_int_get(NRF_RTC2);
-        nrf_rtc_int_enable(NRF_RTC2, mask & ~NRF_RTC_INT_COMPARE3_MASK);
-
-        /* Call callback handler with instance ID. */
         nordic_nrf5_uart_callback_handler(1);
     }
 #endif
-
 }
 
+/**
+ * @brief      Trigger Tx SWI.
+ *
+ * @param[in]  instance  The instance.
+ */
+static void nordic_swi_tx_trigger(int instance)
+{
+    if (instance == 0) {
+
+        nordic_nrf5_uart_swi_mask_tx_0 = 1;
+        NVIC_SetPendingIRQ(SWI0_EGU0_IRQn);
+    }
+#if UART1_ENABLED
+    else if (instance == 1) {
+
+        nordic_nrf5_uart_swi_mask_tx_1 = 1;
+        NVIC_SetPendingIRQ(SWI0_EGU0_IRQn);
+    }
+#endif
+}
+
+/**
+ * @brief      Trigger Rx SWI.
+ *
+ * @param[in]  instance  The instance
+ */
+static void nordic_swi_rx_trigger(int instance)
+{
+    if (instance == 0) {
+
+        nordic_nrf5_uart_swi_mask_rx_0 = 1;
+        NVIC_SetPendingIRQ(SWI0_EGU0_IRQn);
+    }
+#if UART1_ENABLED
+    else if (instance == 1) {
+
+        nordic_nrf5_uart_swi_mask_rx_1 = 1;
+        NVIC_SetPendingIRQ(SWI0_EGU0_IRQn);
+    }
+#endif
+}
 
 /***
- *      _    _         _____ _______   ______               _     _    _                 _ _           
- *     | |  | |  /\   |  __ \__   __| |  ____|             | |   | |  | |               | | |          
- *     | |  | | /  \  | |__) | | |    | |____   _____ _ __ | |_  | |__| | __ _ _ __   __| | | ___ _ __ 
+ *      _    _         _____ _______   ______               _     _    _                 _ _
+ *     | |  | |  /\   |  __ \__   __| |  ____|             | |   | |  | |               | | |
+ *     | |  | | /  \  | |__) | | |    | |____   _____ _ __ | |_  | |__| | __ _ _ __   __| | | ___ _ __
  *     | |  | |/ /\ \ |  _  /  | |    |  __\ \ / / _ \ '_ \| __| |  __  |/ _` | '_ \ / _` | |/ _ \ '__|
- *     | |__| / ____ \| | \ \  | |    | |___\ V /  __/ | | | |_  | |  | | (_| | | | | (_| | |  __/ |   
- *      \____/_/    \_\_|  \_\ |_|    |______\_/ \___|_| |_|\__| |_|  |_|\__,_|_| |_|\__,_|_|\___|_|   
- *                                                                                                     
- *                                                                                                     
+ *     | |__| / ____ \| | \ \  | |    | |___\ V /  __/ | | | |_  | |  | | (_| | | | | (_| | |  __/ |
+ *      \____/_/    \_\_|  \_\ |_|    |______\_/ \___|_| |_|\__| |_|  |_|\__,_|_| |_|\__,_|_|\___|_|
+ *
+ *
  */
 
 /**
- * @brief      Event handler for when Rx buffer is full or buffer swap has been 
+ * @brief      Event handler for when Rx buffer is full or buffer swap has been
  *             triggered by idle task.
- *             
- *             Copy data from DMA buffer to FIFO buffer. 
+ *
+ *             Copy data from DMA buffer to FIFO buffer.
  *             Post callback if not already posted.
  *
  * @param[in]  instance  The instance
  */
 static void nordic_nrf5_uart_event_handler_endrx(int instance)
 {
-    /* Increment idle counter. */
-    core_util_atomic_incr_u32(&nordic_nrf5_uart_state[instance].endrx_counter, 1);
-
     /* Read out active bank flag and swap DMA buffers. */
     uint8_t active_bank = nordic_nrf5_uart_state[instance].active_bank;
     nordic_nrf5_uart_state[instance].active_bank = active_bank ^ 0x01;
@@ -497,6 +431,7 @@ static void nordic_nrf5_uart_event_handler_endrx(int instance)
                 /* Copy 1 byte from DMA buffer and commit to FIFO buffer. */
                 *byte = nordic_nrf5_uart_state[instance].buffer[active_bank][index];
                 nrf_atfifo_item_put(nordic_nrf5_uart_state[instance].fifo, &fifo_context);
+                core_util_atomic_decr_u32(&nordic_nrf5_uart_state[instance].fifo_free_count, 1);
 
             } else {
 
@@ -505,19 +440,19 @@ static void nordic_nrf5_uart_event_handler_endrx(int instance)
             }
         }
 
-        /* Schedule callback to signal data is available if not already posted. */
+        /* Signal callback through lower priority SWI if not already posted. */
         if (nordic_nrf5_uart_state[instance].callback_posted == false) {
 
             nordic_nrf5_uart_state[instance].callback_posted = true;
-            nordic_custom_ticker_set_callback(instance);
+            nordic_swi_rx_trigger(instance);
         }
-    }    
+    }
 }
 
 /**
  * @brief      Event handler for when DMA has been armed with Rx buffer.
- * 
- *             Arm Rx buffer with second buffer for optimal reception. 
+ *
+ *             Arm Rx buffer with second buffer for optimal reception.
  *
  * @param[in]  instance  The instance
  */
@@ -525,52 +460,22 @@ static void nordic_nrf5_uart_event_handler_rxstarted(int instance)
 {
     uint8_t next_bank = nordic_nrf5_uart_state[instance].active_bank ^ 0x01;
 
-    nrf_uarte_rx_buffer_set(nordic_nrf5_uart_register[instance], nordic_nrf5_uart_state[instance].buffer[next_bank], DMA_BUFFER_SIZE);    
-}
-
-/**
- * @brief      Event handler for when a character has been received in DMA buffer.
- *
- *             Increment idle counter and set idle timeout if not already set.
- *
- * @param[in]  instance  The instance
- */
-static void nordic_nrf5_uart_event_handler_rxdrdy(int instance)
-{
-    /* Increment idle counter. */
-    core_util_atomic_incr_u32(&nordic_nrf5_uart_state[instance].rxdrdy_counter, 1);
-
-    /* Set idle timeout if not already set. */
-    if (nordic_nrf5_uart_state[instance].ticker_is_running == false) {
-
-        nordic_nrf5_uart_state[instance].ticker_is_running = true;
-
-        nordic_custom_ticker_set_timeout(instance);
-    }    
-}
-
-/**
- * @brief      Event handler for when the Tx buffer has been transmitted.
- *
- * @param[in]  instance  The instance
- */
-static void nordic_nrf5_uart_event_handler_endtx(int instance)
-{
-    /* Check if callback handler and Tx event mask is set. */
-    uart_irq_handler callback = (uart_irq_handler) nordic_nrf5_uart_state[instance].owner->handler;
-    uint32_t mask = nordic_nrf5_uart_state[instance].owner->mask;
-
-    if (callback && (mask & NORDIC_TX_IRQ)) {
-
-        /* Invoke callback function. */
-        uint32_t context = nordic_nrf5_uart_state[instance].owner->context;
-        callback(context, TxIrq);
+    nrf_uarte_rx_buffer_set(nordic_nrf5_uart_register[instance], nordic_nrf5_uart_state[instance].buffer[next_bank], DMA_BUFFER_SIZE);
+    if (nordic_nrf5_uart_state[instance].rts != NRF_UART_PSEL_DISCONNECTED) {
+        if (nordic_nrf5_uart_state[instance].fifo_free_count > FIFO_MIN) {
+            /* Clear rts since we are ready to receive the next byte */
+            nrf_drv_gpiote_clr_task_trigger(nordic_nrf5_uart_state[instance].rts);
+        } else {
+            /* Suspend reception since there isn't enough buffer space.
+             * The function serial_getc will restart reception. */
+            nordic_nrf5_uart_state[instance].rx_suspended = true;
+        }
     }
 }
 
 #if DEVICE_SERIAL_ASYNCH
 /**
- * @brief      Asynchronous event handler for when Rx DMA buffer is full. 
+ * @brief      Asynchronous event handler for when Rx DMA buffer is full.
  *
  * @param[in]  instance  The instance
  */
@@ -594,43 +499,11 @@ static void nordic_nrf5_uart_event_handler_endrx_asynch(int instance)
         callback();
     }
 }
-
-/**
- * @brief      Asynchronous event handler for when Tx DMA buffer has been sent.
- *
- * @param[in]  instance  The instance
- */
-static void nordic_nrf5_uart_event_handler_endtx_asynch(int instance)
-{
-    /* Disable ENDTX interrupt. */
-    nordic_nrf5_uart_register[instance]->INTEN &= ~NRF_UARTE_INT_ENDTX_MASK;
-
-    /* Clear ENDTX event. */
-    nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX);
-
-    /* Set Tx done and reset Tx mode to be not asynchronous. */
-    nordic_nrf5_uart_state[instance].tx_in_progress = 0;
-    nordic_nrf5_uart_state[instance].tx_asynch = false;
-
-    /* Cast handler to callback function pointer. */
-    void (*callback)(void) = (void (*)(void)) nordic_nrf5_uart_state[instance].owner->tx_handler;
-    uint32_t mask = nordic_nrf5_uart_state[instance].owner->tx_mask;
-
-    /* Signal error if event mask matches and event handler is set. */
-    if (callback && (mask & SERIAL_EVENT_TX_COMPLETE)) {
-
-        /* Store event value so it can be read back. */
-        nordic_nrf5_uart_state[instance].owner->tx_event = SERIAL_EVENT_TX_COMPLETE;
-
-        /* Signal callback handler. */
-        callback();
-    }
-}
 #endif
 
 /**
- * @brief      UARTE event handler. 
- * 
+ * @brief      UARTE event handler.
+ *
  *             Collect signals from UARTE0 and UARTE1 ISR and translate to instance.
  *
  * @param[in]  instance  The instance
@@ -647,51 +520,34 @@ static void nordic_nrf5_uart_event_handler(int instance)
         if (nordic_nrf5_uart_state[instance].rx_asynch) {
 
             nordic_nrf5_uart_event_handler_endrx_asynch(instance);
-        } else 
-#endif        
+        } else
+#endif
         {
             nordic_nrf5_uart_event_handler_endrx(instance);
         }
     }
 
-    /* Rx DMA buffer has been armed. */
-    if (nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXSTARTED))
+    /* Rx DMA buffer has been armed.
+     *
+     * Warning - Do not process NRF_UARTE_EVENT_RXSTARTED if NRF_UARTE_EVENT_ENDRX is pending.
+     * NRF_UARTE_EVENT_RXSTARTED must be processed first or nordic_nrf5_uart_event_handler_rxstarted
+     * will setup the wrong DMA buffer and cause data to be lost.
+     */
+    if (nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXSTARTED) &&
+            !nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDRX))
     {
         nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXSTARTED);
 
         nordic_nrf5_uart_event_handler_rxstarted(instance);
     }
 
-    /* Single character has been put in DMA buffer. */
-    if (nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXDRDY))
-    {
-        nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXDRDY);
-
-        nordic_nrf5_uart_event_handler_rxdrdy(instance);
-    }
-
-    /* Tx single character has been sent. */
-    if (nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDRDY)) {
-
-        nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDRDY);
-
-        /* In non-async transfers this will generate and interrupt if callback and mask is set. */
-        if (!nordic_nrf5_uart_state[instance].tx_asynch) {
-
-            nordic_nrf5_uart_event_handler_endtx(instance);
-        }
-    }
-
     /* Tx DMA buffer has been sent. */
     if (nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX))
     {
-#if DEVICE_SERIAL_ASYNCH
-        /* Call async event handler in async mode. */
-        if (nordic_nrf5_uart_state[instance].tx_asynch) {
+        nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX);
 
-            nordic_nrf5_uart_event_handler_endtx_asynch(instance);
-        }
-#endif
+        /* Use SWI to de-prioritize callback. */
+        nordic_swi_tx_trigger(instance);
     }
 }
 
@@ -717,42 +573,19 @@ static void nordic_nrf5_uart1_handler(void)
 
 
 /***
- *       _____             __ _                       _   _             
- *      / ____|           / _(_)                     | | (_)            
- *     | |     ___  _ __ | |_ _  __ _ _   _ _ __ __ _| |_ _  ___  _ __  
- *     | |    / _ \| '_ \|  _| |/ _` | | | | '__/ _` | __| |/ _ \| '_ \ 
+ *       _____             __ _                       _   _
+ *      / ____|           / _(_)                     | | (_)
+ *     | |     ___  _ __ | |_ _  __ _ _   _ _ __ __ _| |_ _  ___  _ __
+ *     | |    / _ \| '_ \|  _| |/ _` | | | | '__/ _` | __| |/ _ \| '_ \
  *     | |___| (_) | | | | | | | (_| | |_| | | | (_| | |_| | (_) | | | |
  *      \_____\___/|_| |_|_| |_|\__, |\__,_|_|  \__,_|\__|_|\___/|_| |_|
- *                               __/ |                                  
- *                              |___/                                   
+ *                               __/ |
+ *                              |___/
  */
-
-/**
- * @brief      Enable UARTE interrupts.
- * 
- *             Translates instance to UARTE register.
- *             Set IRQ priority to highest to avoid Rx overflow.
- *
- * @param[in]  instance  The instance
- */
-static void nordic_nrf5_uart_irq_enable(int instance)
-{
-    if (instance == 0) {
-
-        nrf_drv_common_irq_enable(UARTE0_UART0_IRQn, APP_IRQ_PRIORITY_HIGHEST);
-    } 
-
-#if UART1_ENABLED
-    else if (instance == 1) {
-
-        nrf_drv_common_irq_enable(UARTE1_IRQn, APP_IRQ_PRIORITY_HIGHEST);
-    }
-#endif
-}
 
 /**
  * @brief      Configure UARTE based on serial object settings.
- * 
+ *
  *             Common for both Rx and Tx.
  *
  * @param      obj   The object
@@ -768,9 +601,16 @@ static void nordic_nrf5_uart_configure_object(serial_t *obj)
 #endif
 
     /* Configure Tx and Rx pins. */
-    nrf_gpio_pin_set(uart_object->tx);
-    nrf_gpio_cfg_output(uart_object->tx);
-    nrf_gpio_cfg_input(uart_object->rx, NRF_GPIO_PIN_NOPULL);
+    if (uart_object->tx != NRF_UART_PSEL_DISCONNECTED) {
+
+        nrf_gpio_pin_set(uart_object->tx);
+        nrf_gpio_cfg_output(uart_object->tx);
+    }
+
+    if (uart_object->rx != NRF_UART_PSEL_DISCONNECTED) {
+
+        nrf_gpio_cfg_input(uart_object->rx, NRF_GPIO_PIN_NOPULL);
+    }
 
     nrf_uarte_txrx_pins_set(nordic_nrf5_uart_register[uart_object->instance],
                             uart_object->tx,
@@ -780,20 +620,62 @@ static void nordic_nrf5_uart_configure_object(serial_t *obj)
     if (uart_object->hwfc == NRF_UART_HWFC_ENABLED) {
 
         /* Check if pin is set before configuring it. */
-        if (uart_object->rts != NRF_UART_PSEL_DISCONNECTED) {
-
-            nrf_gpio_cfg_output(uart_object->rts);
-        }
-
-        /* Check if pin is set before configuring it. */
         if (uart_object->cts != NRF_UART_PSEL_DISCONNECTED) {
 
             nrf_gpio_cfg_input(uart_object->cts, NRF_GPIO_PIN_NOPULL);
         }
 
+        /* Only let UARTE module handle CTS, RTS is handled manually due to buggy UARTE logic. */
         nrf_uarte_hwfc_pins_set(nordic_nrf5_uart_register[uart_object->instance],
-                                uart_object->rts,
+                                NRF_UART_PSEL_DISCONNECTED,
                                 uart_object->cts);
+    }
+
+    /* Check if the rts pin changed */
+    if (uart_object->rts != nordic_nrf5_uart_state[uart_object->instance].rts) {
+        uint32_t ret;
+
+        /* Disable the PPI interconnect */
+        ret = nrf_drv_ppi_channel_disable(nordic_nrf5_uart_state[uart_object->instance].ppi_rts);
+        MBED_ASSERT(ret == NRF_SUCCESS);
+
+        /* Free flow control gpiote pin if it was previously set */
+        if (nordic_nrf5_uart_state[uart_object->instance].rts != NRF_UART_PSEL_DISCONNECTED) {
+            nrf_drv_gpiote_out_uninit((nrf_drv_gpiote_pin_t)uart_object->rts);
+        }
+
+        /* Allocate and enable flow control gpiote pin if it is being used */
+        if (uart_object->rts != NRF_UART_PSEL_DISCONNECTED) {
+
+            static const nrf_drv_gpiote_out_config_t config = {
+                .init_state = NRF_GPIOTE_INITIAL_VALUE_HIGH,
+                .task_pin   = true,
+                .action     = NRF_GPIOTE_POLARITY_LOTOHI
+            };
+
+            /* Allocate gpiote channel */
+            ret = nrf_drv_gpiote_out_init((nrf_drv_gpiote_pin_t)uart_object->rts, &config);
+            if (ret == NRF_ERROR_INVALID_STATE) {
+                /* Pin was previously set to GPIO so uninitialize it */
+                nrf_drv_gpiote_out_uninit((nrf_drv_gpiote_pin_t)uart_object->rts);
+                ret = nrf_drv_gpiote_out_init((nrf_drv_gpiote_pin_t)uart_object->rts, &config);
+            }
+            MBED_ASSERT(ret == NRF_SUCCESS);
+
+            /* Set RTS high on the ENDRX event */
+            ret = nrf_drv_ppi_channel_assign(nordic_nrf5_uart_state[uart_object->instance].ppi_rts,
+                                             nrf_uarte_event_address_get(nordic_nrf5_uart_register[uart_object->instance], NRF_UARTE_EVENT_ENDRX),
+                                             nrf_drv_gpiote_out_task_addr_get(uart_object->rts));
+            MBED_ASSERT(ret == NRF_SUCCESS);
+
+            ret = nrf_drv_ppi_channel_enable(nordic_nrf5_uart_state[uart_object->instance].ppi_rts);
+            MBED_ASSERT(ret == NRF_SUCCESS);
+
+            /* Enable gpiote task - rts pin can no longer be used as GPIO at this point */
+            nrf_drv_gpiote_out_task_enable((nrf_drv_gpiote_pin_t)uart_object->rts);
+        }
+
+        nordic_nrf5_uart_state[uart_object->instance].rts = uart_object->rts;
     }
 
     /* Enable flow control and parity. */
@@ -814,17 +696,16 @@ static void nordic_nrf5_uart_configure_object(serial_t *obj)
 static void nordic_nrf5_uart_configure_rx(int instance)
 {
     /* Disable interrupts during confiration. */
-    nordic_nrf5_uart_register[instance]->INTEN &= ~(NRF_UARTE_INT_RXSTARTED_MASK |
-                                                    NRF_UARTE_INT_ENDRX_MASK     |
-                                                    NRF_UARTE_INT_RXDRDY_MASK);
+    nrf_uarte_int_disable(nordic_nrf5_uart_register[instance], NRF_UARTE_INT_RXSTARTED_MASK |
+                                                               NRF_UARTE_INT_ENDRX_MASK);
 
     /* Clear FIFO buffer. */
     nrf_atfifo_clear(nordic_nrf5_uart_state[instance].fifo);
+    nordic_nrf5_uart_state[instance].fifo_free_count = UART0_FIFO_BUFFER_SIZE;
 
     /* Clear Rx related events. */
     nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXSTARTED);
     nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDRX);
-    nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXDRDY);
 
     /* Enable shortcut between buffer full and begin reception on next buffer armed. */
     nrf_uarte_shorts_enable(nordic_nrf5_uart_register[instance], NRF_UARTE_SHORT_ENDRX_STARTRX);
@@ -840,10 +721,12 @@ static void nordic_nrf5_uart_configure_rx(int instance)
     /* Set non-asynchronous mode. */
     nordic_nrf5_uart_state[instance].rx_asynch = false;
 
+    /* Clear suspend condition */
+    nordic_nrf5_uart_state[instance].rx_suspended = false;
+
     /* Enable interrupts again. */
-    nordic_nrf5_uart_register[instance]->INTEN |= (NRF_UARTE_INT_RXSTARTED_MASK |
-                                                   NRF_UARTE_INT_ENDRX_MASK     |
-                                                   NRF_UARTE_INT_RXDRDY_MASK);
+    nrf_uarte_int_enable(nordic_nrf5_uart_register[instance], NRF_UARTE_INT_RXSTARTED_MASK |
+                                                              NRF_UARTE_INT_ENDRX_MASK);
 }
 
 #if DEVICE_SERIAL_ASYNCH
@@ -855,23 +738,24 @@ static void nordic_nrf5_uart_configure_rx(int instance)
 static void nordic_nrf5_uart_configure_rx_asynch(int instance)
 {
     /* Disable Rx related interrupts. */
-    nordic_nrf5_uart_register[instance]->INTEN &= ~(NRF_UARTE_INT_RXSTARTED_MASK |
-                                                    NRF_UARTE_INT_ENDRX_MASK     |
-                                                    NRF_UARTE_INT_RXDRDY_MASK);
+    nrf_uarte_int_disable(nordic_nrf5_uart_register[instance], NRF_UARTE_INT_RXSTARTED_MASK |
+                                                               NRF_UARTE_INT_ENDRX_MASK);
 
     /* Clear Rx related events. */
     nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXSTARTED);
     nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDRX);
-    nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_RXDRDY);
 
     /* Disable shortcut. Next Rx buffer must be manually started. */
     nrf_uarte_shorts_disable(nordic_nrf5_uart_register[instance], NRF_UARTE_SHORT_ENDRX_STARTRX);
 
-    /* Set asynchronous mode. */    
+    /* Set asynchronous mode. */
     nordic_nrf5_uart_state[instance].rx_asynch = true;
 
+    /* Clear suspend condition */
+    nordic_nrf5_uart_state[instance].rx_suspended = false;
+
     /* Enable Rx interrupt. */
-    nordic_nrf5_uart_register[instance]->INTEN |= NRF_UARTE_INT_ENDRX_MASK;
+    nrf_uarte_int_enable(nordic_nrf5_uart_register[instance], NRF_UARTE_INT_ENDRX_MASK);
 }
 #endif
 
@@ -908,15 +792,15 @@ static void nordic_nrf5_serial_configure(serial_t *obj)
         if (uart_object->rx_asynch == true) {
 
             nordic_nrf5_uart_configure_rx_asynch(instance);
-        } else 
-#endif        
+        } else
+#endif
         {
             /* Set non-asynchronous mode. */
             nordic_nrf5_uart_configure_rx(instance);
             nrf_uarte_task_trigger(nordic_nrf5_uart_register[instance],
                                    NRF_UARTE_TASK_STARTRX);
         }
-    } 
+    }
 #if DEVICE_SERIAL_ASYNCH
     /* Owner hasn't changed but mode has. Reconfigure. */
     else if ((uart_object->rx_asynch == false) && (nordic_nrf5_uart_state[instance].rx_asynch == true)) {
@@ -934,14 +818,14 @@ static void nordic_nrf5_serial_configure(serial_t *obj)
 }
 
 /***
- *      __  __ _              _   _    _          _                 _____ _____ 
+ *      __  __ _              _   _    _          _                 _____ _____
  *     |  \/  | |            | | | |  | |   /\   | |          /\   |  __ \_   _|
- *     | \  / | |__   ___  __| | | |__| |  /  \  | |         /  \  | |__) || |  
- *     | |\/| | '_ \ / _ \/ _` | |  __  | / /\ \ | |        / /\ \ |  ___/ | |  
- *     | |  | | |_) |  __/ (_| | | |  | |/ ____ \| |____   / ____ \| |    _| |_ 
+ *     | \  / | |__   ___  __| | | |__| |  /  \  | |         /  \  | |__) || |
+ *     | |\/| | '_ \ / _ \/ _` | |  __  | / /\ \ | |        / /\ \ |  ___/ | |
+ *     | |  | | |_) |  __/ (_| | | |  | |/ ____ \| |____   / ____ \| |    _| |_
  *     |_|  |_|_.__/ \___|\__,_| |_|  |_/_/    \_\______| /_/    \_\_|   |_____|
- *                                                                              
- *                                                                              
+ *
+ *
  */
 
 /** Initialize the serial peripheral. It sets the default parameters for serial
@@ -964,31 +848,18 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
     /* Only initialize on first call. */
     static bool first_init = true;
     if (first_init) {
+        uint32_t ret;
         first_init = false;
 
-        /* Register RTC2 ISR. */
-        NVIC_SetVector(RTC2_IRQn, (uint32_t) nordic_nrf5_rtc2_handler);
+        /* Initialize components that serial relies on. */
+        nrf_drv_ppi_init();
+        if (!nrf_drv_gpiote_is_init()) {
+            nrf_drv_gpiote_init();
+        }
 
-        /* Clear RTC2 channel events. */
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_0);
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_1);
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_2);
-        nrf_rtc_event_clear(NRF_RTC2, NRF_RTC_EVENT_COMPARE_3);
-
-        /* Enable interrupts for all four RTC2 channels. */
-        nrf_rtc_event_enable(NRF_RTC2, 
-                             NRF_RTC_INT_COMPARE0_MASK | 
-                             NRF_RTC_INT_COMPARE1_MASK | 
-                             NRF_RTC_INT_COMPARE2_MASK | 
-                             NRF_RTC_INT_COMPARE3_MASK);
-
-        /* Enable RTC2 IRQ. Priority is set to lowest so that the UARTE ISR can interrupt it. */
-        nrf_drv_common_irq_enable(RTC2_IRQn, APP_IRQ_PRIORITY_LOWEST);
-
-        /* Start RTC2. According to the datasheet the added power consumption is neglible so 
-         * the RTC2 will run forever. 
-         */
-        nrf_rtc_task_trigger(NRF_RTC2, NRF_RTC_TASK_START);
+        /* Enable interrupts for SWI. */
+        NVIC_SetVector(SWI0_EGU0_IRQn, (uint32_t) nordic_nrf5_uart_swi0);
+        nrf_drv_common_irq_enable(SWI0_EGU0_IRQn, APP_IRQ_PRIORITY_LOWEST);
 
         /* Initialize FIFO buffer for UARTE0. */
         NRF_ATFIFO_INIT(nordic_nrf5_uart_fifo_0);
@@ -997,9 +868,18 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
         /* Initialize owner to NULL. */
         nordic_nrf5_uart_state[0].owner = NULL;
 
-        /* Enable interrupts for UARTE0. */
+        /* Allocate a PPI channel for flow control */
+        ret = nrf_drv_ppi_channel_alloc(&nordic_nrf5_uart_state[0].ppi_rts);
+        MBED_ASSERT(ret == NRF_SUCCESS);
+
+        /* Clear RTS */
+        nordic_nrf5_uart_state[0].rts = NRF_UART_PSEL_DISCONNECTED;
+
+        /* Clear any old events and enable interrupts for UARTE0. */
+        nrf_uarte_int_disable(nordic_nrf5_uart_register[0], 0xFFFFFFFF);
+
         NVIC_SetVector(UARTE0_UART0_IRQn, (uint32_t) nordic_nrf5_uart0_handler);
-        nordic_nrf5_uart_irq_enable(0);
+        nrf_drv_common_irq_enable(UARTE0_UART0_IRQn, APP_IRQ_PRIORITY_HIGHEST);
 
 #if UART1_ENABLED
         /* Initialize FIFO buffer for UARTE1. */
@@ -1009,9 +889,18 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
         /* Initialize owner to NULL. */
         nordic_nrf5_uart_state[1].owner = NULL;
 
-        /* Enable interrupts for UARTE1. */
+        /* Allocate a PPI channel for flow control */
+        ret = nrf_drv_ppi_channel_alloc(&nordic_nrf5_uart_state[1].ppi_rts);
+        MBED_ASSERT(ret == NRF_SUCCESS);
+
+        /* Clear RTS */
+        nordic_nrf5_uart_state[1].rts = NRF_UART_PSEL_DISCONNECTED;
+
+        /* Clear any old events and enable interrupts for UARTE1. */
+        nrf_uarte_int_disable(nordic_nrf5_uart_register[1], 0xFFFFFFFF);
+
         NVIC_SetVector(UARTE1_IRQn, (uint32_t) nordic_nrf5_uart1_handler);
-        nordic_nrf5_uart_irq_enable(1);
+        nrf_drv_common_irq_enable(UARTE1_IRQn, APP_IRQ_PRIORITY_HIGHEST);
 #endif
     }
 
@@ -1027,6 +916,37 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
     if (nordic_nrf5_uart_state[instance].usage_counter == 1) {
 
         nrf_uarte_enable(nordic_nrf5_uart_register[instance]);
+
+        /* In order to support printing with interrupts disabled serial_putc
+         * must busy wait on NRF_UARTE_EVENT_TXDRDY. This event cannot be set
+         * manually but must be set by the UARTE module after a character has
+         * been sent.
+         *
+         * The following code sends a dummy character into the void so that
+         * NRF_UARTE_EVENT_TXDRDY is correctly set.
+         */
+
+        /* Ensure pins are disconnected. */
+        nrf_uarte_txrx_pins_set(nordic_nrf5_uart_register[instance],
+                                NRF_UART_PSEL_DISCONNECTED,
+                                NRF_UART_PSEL_DISCONNECTED);
+
+        /* Set maximum baud rate to minimize waiting. */
+        nrf_uarte_baudrate_set(nordic_nrf5_uart_register[instance],
+                               NRF_UARTE_BAUDRATE_1000000);
+
+        /* Send character. */
+        nrf_uarte_tx_buffer_set(nordic_nrf5_uart_register[instance],
+                                &nordic_nrf5_uart_state[instance].tx_data,
+                                1);
+        nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX);
+        nrf_uarte_task_trigger(nordic_nrf5_uart_register[instance], NRF_UARTE_TASK_STARTTX);
+
+        /* Wait until NRF_UARTE_EVENT_TXDRDY is set before proceeding. */
+        bool done = false;
+        do {
+            done = nrf_uarte_event_extra_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDRDY);
+        } while(done == false);
     }
 
     /* Store pins in serial object. */
@@ -1221,6 +1141,7 @@ void serial_set_flow_control(serial_t *obj, FlowControl type, PinName rxflow, Pi
 
     /* Force reconfiguration next time object is owner. */
     uart_object->update = true;
+    nordic_nrf5_serial_configure(obj);
 }
 
 /** Clear the serial peripheral
@@ -1289,18 +1210,18 @@ void serial_pinout_tx(PinName tx)
     /**
      * Legacy API. Not used by Mbed.
      */
-    MBED_ASSERT(0);    
+    MBED_ASSERT(0);
 }
 
 /***
- *       _____ _                 _                 _____ _____ 
+ *       _____ _                 _                 _____ _____
  *      / ____(_)               | |          /\   |  __ \_   _|
- *     | (___  _ _ __ ___  _ __ | | ___     /  \  | |__) || |  
- *      \___ \| | '_ ` _ \| '_ \| |/ _ \   / /\ \ |  ___/ | |  
- *      ____) | | | | | | | |_) | |  __/  / ____ \| |    _| |_ 
+ *     | (___  _ _ __ ___  _ __ | | ___     /  \  | |__) || |
+ *      \___ \| | '_ ` _ \| '_ \| |/ _ \   / /\ \ |  ___/ | |
+ *      ____) | | | | | | | |_) | |  __/  / ____ \| |    _| |_
  *     |_____/|_|_| |_| |_| .__/|_|\___| /_/    \_\_|   |_____|
- *                        | |                                  
- *                        |_|                                  
+ *                        | |
+ *                        |_|
  */
 
 /** The serial interrupt handler registration
@@ -1347,25 +1268,11 @@ void serial_irq_set(serial_t *obj, SerialIrq irq, uint32_t enable)
     if (enable) {
 
         uart_object->mask |= type;
+        nordic_nrf5_serial_configure(obj);
 
     } else {
 
         uart_object->mask &= ~type;
-    }
-
-    /* Enable TXDRDY event. */
-    if ((type == NORDIC_TX_IRQ) && enable) {
-
-        /* Clear Tx ready event and enable Tx ready interrupts. */
-        nrf_uarte_event_clear(nordic_nrf5_uart_register[uart_object->instance], NRF_UARTE_EVENT_TXDRDY);
-        nordic_nrf5_uart_register[uart_object->instance]->INTEN |= NRF_UARTE_INT_TXDRDY_MASK;
-
-    /* Disable TXDRDY event. */
-    } else if ((type == NORDIC_TX_IRQ) && !enable) {
-
-        /* Disable Tx ready interrupts and clear Tx ready event. */
-        nordic_nrf5_uart_register[uart_object->instance]->INTEN &= ~NRF_UARTE_INT_TXDRDY_MASK;
-        nrf_uarte_event_clear(nordic_nrf5_uart_register[uart_object->instance], NRF_UARTE_EVENT_TXDRDY);
     }
 }
 
@@ -1400,12 +1307,17 @@ int serial_getc(serial_t *obj)
     /* serial_getc is a blocking call. */
     while (*head == *tail);
 
-    /* Get 1 byte from FIFO buffer. The buffer is atomic 
-     * and doesn't need to be protected in a critical section. 
+    /* Get 1 byte from FIFO buffer. The buffer is atomic
+     * and doesn't need to be protected in a critical section.
      */
     nrf_atfifo_item_get_t context;
     uint8_t *byte = (uint8_t *) nrf_atfifo_item_get(fifo, &context);
     nrf_atfifo_item_free(fifo, &context);
+    core_util_atomic_incr_u32(&nordic_nrf5_uart_state[instance].fifo_free_count, 1);
+    if (nordic_nrf5_uart_state[instance].rx_suspended) {
+        nordic_nrf5_uart_state[instance].rx_suspended = false;
+        nrf_drv_gpiote_clr_task_trigger(nordic_nrf5_uart_state[instance].rts);
+    }
 
     return *byte;
 }
@@ -1418,6 +1330,7 @@ int serial_getc(serial_t *obj)
  */
 void serial_putc(serial_t *obj, int character)
 {
+    bool done = false;
     MBED_ASSERT(obj);
 
 #if DEVICE_SERIAL_ASYNCH
@@ -1428,31 +1341,14 @@ void serial_putc(serial_t *obj, int character)
 
     int instance = uart_object->instance;
 
-    /**
-     * tx_in_progress acts like a mutex to ensure only one transmission can be active at a time.
-     * The flag is modified using the atomic compare-and-set function.
-     */
-    bool mutex = false;
-
-    do {
-        uint8_t expected = 0;
-        uint8_t desired = 1;
-
-        mutex = core_util_atomic_cas_u8((uint8_t *) &nordic_nrf5_uart_state[instance].tx_in_progress, &expected, desired);
-    } while (mutex == false);
-
-    /* Take ownership and configure UART if necessary. */
     nordic_nrf5_serial_configure(obj);
 
-    /**
-     * The UARTE module can generate two different Tx events: TXDRDY when each character has
-     * been transmitted and ENDTX when the entire buffer has been sent. 
-     * 
-     * For the blocking serial_putc, TXDRDY interrupts are enabled and only used for the 
-     * single character TX IRQ callback handler. The ENDTX event does not generate an interrupt
-     * but is caught using a busy-wait loop. Once ENDTX has been generated we disable TXDRDY 
-     * interrupts again.
-     */
+    /* Wait until UART is ready to send next character. */
+    do {
+        done = nrf_uarte_event_extra_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDRDY);
+    } while(done == false);
+
+    nrf_uarte_event_extra_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDRDY);
 
     /* Arm Tx DMA buffer. */
     nordic_nrf5_uart_state[instance].tx_data = character;
@@ -1460,25 +1356,12 @@ void serial_putc(serial_t *obj, int character)
                             &nordic_nrf5_uart_state[instance].tx_data,
                             1);
 
-    /* Clear TXDRDY event and enable TXDRDY interrupts. */
-    nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDRDY);
-    nordic_nrf5_uart_register[instance]->INTEN |= NRF_UARTE_INT_TXDRDY_MASK;
-
-    /* Clear ENDTX event. */
+    /* Clear Tx event and enable Tx interrupts. */
     nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX);
+    nrf_uarte_int_enable(nordic_nrf5_uart_register[instance], NRF_UARTE_INT_ENDTX_MASK);
 
-    /* Trigger DMA transfer. */
-    nrf_uarte_task_trigger(nordic_nrf5_uart_register[instance],
-                           NRF_UARTE_TASK_STARTTX);
-
-    /* Busy-wait until the ENDTX event occurs. */
-    while (!nrf_uarte_event_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX));
-
-    /* Disable TXDRDY event again. */
-    nordic_nrf5_uart_register[instance]->INTEN &= ~NRF_UARTE_INT_TXDRDY_MASK;
-
-    /* Release mutex. As the owner this call is safe. */
-    nordic_nrf5_uart_state[instance].tx_in_progress = 0;
+    /* Start transfer. */
+    nrf_uarte_task_trigger(nordic_nrf5_uart_register[instance], NRF_UARTE_TASK_STARTTX);
 }
 
 /** Check if the serial peripheral is readable
@@ -1527,18 +1410,19 @@ int serial_writable(serial_t *obj)
 
     int instance = uart_object->instance;
 
-    return (nordic_nrf5_uart_state[instance].tx_in_progress == 0);
+    return ((nordic_nrf5_uart_state[instance].tx_in_progress == 0) &&
+            (nrf_uarte_event_extra_check(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_TXDRDY)));
 }
 
 /***
- *                                    _                                                _____ _____ 
+ *                                    _                                                _____ _____
  *         /\                        | |                                         /\   |  __ \_   _|
- *        /  \   ___ _   _ _ __   ___| |__  _ __ ___  _ __   ___  _   _ ___     /  \  | |__) || |  
- *       / /\ \ / __| | | | '_ \ / __| '_ \| '__/ _ \| '_ \ / _ \| | | / __|   / /\ \ |  ___/ | |  
- *      / ____ \\__ \ |_| | | | | (__| | | | | | (_) | | | | (_) | |_| \__ \  / ____ \| |    _| |_ 
+ *        /  \   ___ _   _ _ __   ___| |__  _ __ ___  _ __   ___  _   _ ___     /  \  | |__) || |
+ *       / /\ \ / __| | | | '_ \ / __| '_ \| '__/ _ \| '_ \ / _ \| | | / __|   / /\ \ |  ___/ | |
+ *      / ____ \\__ \ |_| | | | | (__| | | | | | (_) | | | | (_) | |_| \__ \  / ____ \| |    _| |_
  *     /_/    \_\___/\__, |_| |_|\___|_| |_|_|  \___/|_| |_|\___/ \__,_|___/ /_/    \_\_|   |_____|
- *                    __/ |                                                                        
- *                   |___/                                                                         
+ *                    __/ |
+ *                   |___/
  */
 
 #if DEVICE_SERIAL_ASYNCH
@@ -1590,7 +1474,7 @@ int serial_tx_asynch(serial_t *obj, const void *tx, size_t tx_length, uint8_t tx
         if (nrf_drv_is_in_RAM(tx) || (tx_length <= UART0_FIFO_BUFFER_SIZE)) {
             valid = true;
         }
-    } 
+    }
 #if UART1_ENABLED
     else {
         if (nrf_drv_is_in_RAM(tx) || (tx_length <= UART1_FIFO_BUFFER_SIZE)) {
@@ -1620,7 +1504,7 @@ int serial_tx_asynch(serial_t *obj, const void *tx, size_t tx_length, uint8_t tx
                 nordic_nrf5_uart_fifo_0_data[index] = pointer[index];
             }
 
-            buffer = (uint8_t *) nordic_nrf5_uart_fifo_0_data;        
+            buffer = (uint8_t *) nordic_nrf5_uart_fifo_0_data;
         }
 
         /* Store callback handler, mask and reset event value. */
@@ -1632,19 +1516,9 @@ int serial_tx_asynch(serial_t *obj, const void *tx, size_t tx_length, uint8_t tx
         nordic_nrf5_uart_state[instance].tx_asynch = true;
         nordic_nrf5_serial_configure(obj);
 
-        /**
-         * The UARTE module can generate two different Tx events: TXDRDY when each 
-         * character has been transmitted and ENDTX when the entire buffer has been sent. 
-         * 
-         * For the async serial_tx_async, TXDRDY interrupts are disabled completely. ENDTX  
-         * interrupts are enabled and used to signal the completion of the async transfer.
-         * 
-         * The ENDTX interrupt is diabled immediately after it is fired in the ISR.
-         */
-
         /* Clear Tx event and enable Tx interrupts. */
         nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX);
-        nordic_nrf5_uart_register[instance]->INTEN |= NRF_UARTE_INT_ENDTX_MASK;
+        nrf_uarte_int_enable(nordic_nrf5_uart_register[instance], NRF_UARTE_INT_ENDTX_MASK);
 
         /* Set Tx DMA buffer. */
         nrf_uarte_tx_buffer_set(nordic_nrf5_uart_register[obj->serial.instance],
@@ -1783,7 +1657,7 @@ void serial_tx_abort_asynch(serial_t *obj)
     int instance = obj->serial.instance;
 
     /* Disable ENDTX interrupts. */
-    nordic_nrf5_uart_register[instance]->INTEN &= ~NRF_UARTE_INT_ENDTX_MASK;
+    nrf_uarte_int_disable(nordic_nrf5_uart_register[instance], NRF_UARTE_INT_ENDTX_MASK);
 
     /* Clear ENDTX event. */
     nrf_uarte_event_clear(nordic_nrf5_uart_register[instance], NRF_UARTE_EVENT_ENDTX);

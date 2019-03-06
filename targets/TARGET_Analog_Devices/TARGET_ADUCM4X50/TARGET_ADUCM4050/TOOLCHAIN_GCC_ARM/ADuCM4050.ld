@@ -23,7 +23,7 @@ MEMORY
   /* The rest of the flash */
   FLASH (rx) : ORIGIN = MBED_APP_START + ADUCM_SECTOR_SIZE, LENGTH = MBED_APP_SIZE - ADUCM_SECTOR_SIZE
   /* SRAM bank 0 */
-  DSRAM_A (rwx) : ORIGIN = 0x20000200, LENGTH = 32k - 0x200
+  DSRAM_A (rwx) : ORIGIN = 0x20000200, LENGTH = 28k - 0x200
   /* SRAM bank 3+4+5+6+7 */
   DSRAM_B (rwx) : ORIGIN = 0x20048000, LENGTH = 64k
   /* stack must not be in bank 1,2,7 where ISRAM or CACHE
@@ -130,7 +130,7 @@ SECTIONS
     /*
     .copy.table :
     {
-        . = ALIGN(4);
+        . = ALIGN(8);
         __copy_table_start__ = .;
         LONG (__etext)
         LONG (__data_start__)
@@ -148,7 +148,7 @@ SECTIONS
 
     .zero.table :
     {
-        . = ALIGN(4);
+        . = ALIGN(8);
         __zero_table_start__ = .;
         LONG (__bss_start__)
         LONG (__bss_end__ - __bss_start__)
@@ -166,13 +166,13 @@ SECTIONS
         *(vtable)
         *(.data*)
 
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* preinit data */
         PROVIDE_HIDDEN (__preinit_array_start = .);
         KEEP(*(.preinit_array))
         PROVIDE_HIDDEN (__preinit_array_end = .);
 
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* init data */
         PROVIDE_HIDDEN (__init_array_start = .);
         KEEP(*(SORT(.init_array.*)))
@@ -180,7 +180,7 @@ SECTIONS
         PROVIDE_HIDDEN (__init_array_end = .);
 
 
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* finit data */
         PROVIDE_HIDDEN (__fini_array_start = .);
         KEEP(*(SORT(.fini_array.*)))
@@ -188,7 +188,7 @@ SECTIONS
         PROVIDE_HIDDEN (__fini_array_end = .);
 
         KEEP(*(.jcr*))
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* All data end */
         __data_end__ = .;
 

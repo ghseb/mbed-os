@@ -58,14 +58,14 @@ NUMAKER_EMAC::NUMAKER_EMAC() : thread(0), hwaddr()
 {
 }
 
-static osThreadId_t create_new_thread(const char *threadName, void (*thread)(void *arg), void *arg, int stacksize, osPriority_t priority, os_thread_t *thread_cb)
+static osThreadId_t create_new_thread(const char *threadName, void (*thread)(void *arg), void *arg, int stacksize, osPriority_t priority, mbed_rtos_storage_thread_t *thread_cb)
 {
     osThreadAttr_t attr = {0};
     attr.name = threadName;
     attr.stack_mem  = malloc(stacksize);
     attr.cb_mem  = thread_cb;
     attr.stack_size = stacksize;
-    attr.cb_size = sizeof(os_thread_t);
+    attr.cb_size = sizeof(mbed_rtos_storage_thread_t);
     attr.priority = priority;
     return osThreadNew(thread, arg, &attr);
 }
@@ -220,9 +220,9 @@ void NUMAKER_EMAC::packet_rx()
  */
 bool NUMAKER_EMAC::link_out(emac_mem_buf_t *buf)
 {
-    bool result;
+    bool result = false;
     emac_mem_buf_t *q;
-    uint8_t *buffer = numaker_eth_get_tx_buf();
+    uint8_t *buffer = NULL;
     uint32_t framelength = 0;
     uint32_t bufferoffset = 0;
     uint32_t byteslefttocopy = 0;
@@ -230,7 +230,9 @@ bool NUMAKER_EMAC::link_out(emac_mem_buf_t *buf)
 
     /* Get exclusive access */
     TXLockMutex.lock();
+    buffer = numaker_eth_get_tx_buf();
     NU_DEBUGF(("%s ... buffer=0x%x\r\n",__FUNCTION__, buffer));
+    if( buffer == NULL ) goto error;
     /* copy frame from buf to driver buffers */
     for (q = buf; q != NULL; q = memory_manager->get_next(q)) {
 

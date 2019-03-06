@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2006-2013 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,11 +26,13 @@
 #if DEVICE_SEMIHOST
 
 // return true if a debugger is attached, indicating mbed interface is connected
-int mbed_interface_connected(void) {
+int mbed_interface_connected(void)
+{
     return semihost_connected();
 }
 
-int mbed_interface_reset(void) {
+int mbed_interface_reset(void)
+{
     if (mbed_interface_connected()) {
         semihost_reset();
         return 0;
@@ -38,7 +41,8 @@ int mbed_interface_reset(void) {
     }
 }
 
-WEAK int mbed_interface_uid(char *uid) {
+WEAK int mbed_interface_uid(char *uid)
+{
     if (mbed_interface_connected()) {
         return semihost_uid(uid); // Returns 0 if successful, -1 on failure
     } else {
@@ -47,11 +51,13 @@ WEAK int mbed_interface_uid(char *uid) {
     }
 }
 
-int mbed_interface_disconnect(void) {
+int mbed_interface_disconnect(void)
+{
     int res;
     if (mbed_interface_connected()) {
-        if ((res = semihost_disabledebug()) != 0)
+        if ((res = semihost_disabledebug()) != 0) {
             return res;
+        }
         while (mbed_interface_connected());
         return 0;
     } else {
@@ -59,11 +65,13 @@ int mbed_interface_disconnect(void) {
     }
 }
 
-int mbed_interface_powerdown(void) {
+int mbed_interface_powerdown(void)
+{
     int res;
     if (mbed_interface_connected()) {
-        if ((res = semihost_powerdown()) != 0)
+        if ((res = semihost_powerdown()) != 0) {
             return res;
+        }
         while (mbed_interface_connected());
         return 0;
     } else {
@@ -72,17 +80,20 @@ int mbed_interface_powerdown(void) {
 }
 
 MBED_DEPRECATED_SINCE("mbed-os-5.9", "This function shouldn't be used in new code."
-    "For system reset funcionality use system_reset()")
-void mbed_reset(void) {
+                      "For system reset funcionality use system_reset()")
+void mbed_reset(void)
+{
     mbed_interface_reset();
 }
 
-WEAK int mbed_uid(char *uid) {
+WEAK int mbed_uid(char *uid)
+{
     return mbed_interface_uid(uid);
 }
 #endif
 
-WEAK void mbed_mac_address(char *mac) {
+WEAK void mbed_mac_address(char *mac)
+{
 #if DEVICE_SEMIHOST
     char uid[DEVICE_ID_LENGTH + 1];
     int i;
@@ -93,7 +104,7 @@ WEAK void mbed_mac_address(char *mac) {
 #if defined(DEVICE_MAC_OFFSET)
         p += DEVICE_MAC_OFFSET;
 #endif
-        for (i=0; i<6; i++) {
+        for (i = 0; i < 6; i++) {
             int byte;
             sscanf(p, "%2x", &byte);
             mac[i] = byte;

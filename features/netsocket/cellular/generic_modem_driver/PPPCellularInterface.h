@@ -18,7 +18,9 @@
 
 #include "CellularBase.h"
 #include "platform/ATCmdParser.h"
-#include "mbed.h"
+#include "ATCmdParser.h"
+#include "FileHandle.h"
+#include "Callback.h"
 
 #if NSAPI_PPP_AVAILABLE
 
@@ -30,14 +32,14 @@ class NetworkStack;
  * UBX-13001820 - AT Commands Example Application Note (Section 4.1.4.5)
  */
 typedef enum {
-   GSM=0,
-   COMPACT_GSM=1,
-   UTRAN=2,
-   EDGE=3,
-   HSDPA=4,
-   HSUPA=5,
-   HSDPA_HSUPA=6,
-   LTE=7
+    GSM = 0,
+    COMPACT_GSM = 1,
+    UTRAN = 2,
+    EDGE = 3,
+    HSDPA = 4,
+    HSUPA = 5,
+    HSDPA_HSUPA = 6,
+    LTE = 7
 } radio_access_nwk_type;
 
 /**
@@ -45,7 +47,7 @@ typedef enum {
  * to connect.
  */
 typedef enum {
-    CIRCUIT_SWITCHED=0,
+    CIRCUIT_SWITCHED = 0,
     PACKET_SWITCHED
 } nwk_type;
 
@@ -54,15 +56,15 @@ typedef enum {
  * UBX-13001820 - AT Commands Example Application Note (Section 7.10.3)
  */
 typedef enum {
-    CSD_NOT_REGISTERED_NOT_SEARCHING=0,
-    CSD_REGISTERED=1,
-    CSD_NOT_REGISTERED_SEARCHING=2,
-    CSD_REGISTRATION_DENIED=3,
-    CSD_UNKNOWN_COVERAGE=4,
-    CSD_REGISTERED_ROAMING=5,
-    CSD_SMS_ONLY=6,
-    CSD_SMS_ONLY_ROAMING=7,
-    CSD_CSFB_NOT_PREFERRED=9
+    CSD_NOT_REGISTERED_NOT_SEARCHING = 0,
+    CSD_REGISTERED = 1,
+    CSD_NOT_REGISTERED_SEARCHING = 2,
+    CSD_REGISTRATION_DENIED = 3,
+    CSD_UNKNOWN_COVERAGE = 4,
+    CSD_REGISTERED_ROAMING = 5,
+    CSD_SMS_ONLY = 6,
+    CSD_SMS_ONLY_ROAMING = 7,
+    CSD_CSFB_NOT_PREFERRED = 9
 } nwk_registration_status_csd;
 
 /**
@@ -70,20 +72,20 @@ typedef enum {
  * UBX-13001820 - AT Commands Example Application Note (Section 18.27.3)
  */
 typedef enum {
-    PSD_NOT_REGISTERED_NOT_SEARCHING=0,
-    PSD_REGISTERED=1,
-    PSD_NOT_REGISTERED_SEARCHING=2,
-    PSD_REGISTRATION_DENIED=3,
-    PSD_UNKNOWN_COVERAGE=4,
-    PSD_REGISTERED_ROAMING=5,
-    PSD_EMERGENCY_SERVICES_ONLY=8
+    PSD_NOT_REGISTERED_NOT_SEARCHING = 0,
+    PSD_REGISTERED = 1,
+    PSD_NOT_REGISTERED_SEARCHING = 2,
+    PSD_REGISTRATION_DENIED = 3,
+    PSD_UNKNOWN_COVERAGE = 4,
+    PSD_REGISTERED_ROAMING = 5,
+    PSD_EMERGENCY_SERVICES_ONLY = 8
 } nwk_registration_status_psd;
 
 typedef struct {
-    char ccid[20+1];    //!< Integrated Circuit Card ID
-    char imsi[15+1];    //!< International Mobile Station Identity
-    char imei[15+1];    //!< International Mobile Equipment Identity
-    char meid[18+1];    //!< Mobile Equipment IDentifier
+    char ccid[20 + 1];  //!< Integrated Circuit Card ID
+    char imsi[15 + 1];  //!< International Mobile Station Identity
+    char imei[15 + 1];  //!< International Mobile Equipment Identity
+    char meid[18 + 1];  //!< Mobile Equipment IDentifier
     int flags;
     radio_access_nwk_type rat;
     nwk_registration_status_csd reg_status_csd;
@@ -114,7 +116,7 @@ public:
      * use - this permits a derived class to pass a pointer to a not-yet-constructed member object.
      */
     MBED_DEPRECATED_SINCE("mbed-os-5.9", "This API will be deprecated, use mbed-os/features/cellular/easy_cellular/EasyCellularConnection.h instead.")
-    PPPCellularInterface(FileHandle *fh, bool debug = false);
+    PPPCellularInterface(mbed::FileHandle *fh, bool debug = false);
 
     /** Destructor
      *
@@ -127,7 +129,7 @@ public:
      *
      *  @deprecated This API will be deprecated in mbed-os-5.9. Use mbed-os/features/cellular/easy_cellular/EasyCellularConnection.h instead.
      *
-     *  Please check documentation of connect() for default behaviour of APN settings.
+     *  Please check documentation of connect() for default behavior of APN settings.
      *
      *  @param apn      Access point name
      *  @param uname    optionally, Username
@@ -135,7 +137,7 @@ public:
      */
     MBED_DEPRECATED_SINCE("mbed-os-5.9", "This API will be deprecated, use mbed-os/features/cellular/easy_cellular/EasyCellularConnection.h instead.")
     virtual void set_credentials(const char *apn, const char *uname = 0,
-                                                  const char *pwd = 0);
+                                 const char *pwd = 0);
 
     /** Set the pin code for SIM card
      *
@@ -176,7 +178,7 @@ public:
      *  by the cellular modem over PPP interface.
      *
      *  If the SIM requires a PIN, and it is not set/invalid, NSAPI_ERROR_AUTH_ERROR is returned.
-     *  For APN setup, default behaviour is to use 'internet' as APN string and assuming no authentication
+     *  For APN setup, default behavior is to use 'internet' as APN string and assuming no authentication
      *  is required, i.e., username and password are not set. Optionally, a database lookup can be requested
      *  by turning on the APN database lookup feature. In order to do so, add 'MBED_CONF_PPP_CELL_IFACE_APN_LOOKUP'
      *  in your mbed_app.json. APN database is by no means exhaustive. It contains a short list of some public
@@ -212,7 +214,7 @@ public:
      * connection. It doesn't do anything immediately other than setting up flags.
      *
      * @param set        can be set to true if the SIM pin check is supposed to be enabled
-     *                   and vice versa.
+     *                   and false if not.
      */
     MBED_DEPRECATED_SINCE("mbed-os-5.9", "This API will be deprecated, use mbed-os/features/cellular/easy_cellular/EasyCellularConnection.h instead.")
     void set_sim_pin_check(bool set);
@@ -286,7 +288,7 @@ public:
      *  @param status_cb The callback for status changes
      */
     MBED_DEPRECATED_SINCE("mbed-os-5.9", "This API will be deprecated, use mbed-os/features/cellular/easy_cellular/EasyCellularConnection.h instead.")
-    virtual void attach(Callback<void(nsapi_event_t, intptr_t)> status_cb);
+    virtual void attach(mbed::Callback<void(nsapi_event_t, intptr_t)> status_cb);
 
     /** Get the connection status
      *
@@ -308,8 +310,8 @@ public:
     virtual nsapi_error_t set_blocking(bool blocking);
 
 private:
-    FileHandle *_fh;
-    ATCmdParser *_at;
+    mbed::FileHandle *_fh;
+    mbed::ATCmdParser *_at;
     const char *_new_pin;
     const char *_pin;
     const char *_apn;
@@ -317,7 +319,7 @@ private:
     const char *_pwd;
     bool _debug_trace_on;
     nsapi_ip_stack_t _stack;
-    Callback<void(nsapi_event_t, intptr_t)> _connection_status_cb;
+    mbed::Callback<void(nsapi_event_t, intptr_t)> _connection_status_cb;
     nsapi_connection_status_t _connect_status;
     bool _connect_is_blocking;
     void base_initialization();
@@ -403,7 +405,7 @@ protected:
      *
      * @return true if registration is successful
      */
-    bool nwk_registration(uint8_t nwk_type=PACKET_SWITCHED);
+    bool nwk_registration(uint8_t nwk_type = PACKET_SWITCHED);
 
 };
 

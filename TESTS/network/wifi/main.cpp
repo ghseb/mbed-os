@@ -15,8 +15,10 @@
  * limitations under the License.
  */
 
-#ifndef MBED_CONF_APP_OBJECT_CONSTRUCTION
-    #error [NOT_SUPPORTED] No network interface found for this target.
+#define WIFI 2
+#if !defined(MBED_CONF_TARGET_NETWORK_DEFAULT_INTERFACE_TYPE) || \
+    MBED_CONF_TARGET_NETWORK_DEFAULT_INTERFACE_TYPE != WIFI
+#error [NOT_SUPPORTED] No network configuration found for this target.
 #endif
 
 #include "mbed.h"
@@ -48,8 +50,9 @@
 
 using namespace utest::v1;
 
-utest::v1::status_t test_setup(const size_t number_of_cases) {
-    GREENTEA_SETUP(240, "default_auto");
+utest::v1::status_t test_setup(const size_t number_of_cases)
+{
+    GREENTEA_SETUP(360, "default_auto");
     return verbose_test_setup_handler(number_of_cases);
 }
 
@@ -59,37 +62,30 @@ Case cases[] = {
     Case("WIFI-CONNECT-NOCREDENTIALS", wifi_connect_nocredentials),
     Case("WIFI-SET-CREDENTIAL", wifi_set_credential),
     Case("WIFI-SET-CHANNEL", wifi_set_channel),
+    Case("WIFI-CONNECT-PARAMS-NULL", wifi_connect_params_null),
+    Case("WIFI-SCAN-NULL", wifi_scan_null),
+#if defined(MBED_CONF_APP_WIFI_SECURE_SSID) || defined(MBED_CONF_APP_WIFI_UNSECURE_SSID)
+    Case("WIFI-SCAN", wifi_scan),
+#endif
 #if defined(MBED_CONF_APP_WIFI_UNSECURE_SSID)
     Case("WIFI-GET-RSSI", wifi_get_rssi),
-#endif
-    Case("WIFI-CONNECT-PARAMS-NULL", wifi_connect_params_null),
-#if defined(MBED_CONF_APP_WIFI_UNSECURE_SSID)
     Case("WIFI-CONNECT-PARAMS-VALID-UNSECURE", wifi_connect_params_valid_unsecure),
+    Case("WIFI-CONNECT", wifi_connect),
+    Case("WIFI-CONNECT-DISCONNECT-REPEAT", wifi_connect_disconnect_repeat),
 #endif
 #if defined(MBED_CONF_APP_WIFI_SECURE_SSID)
     Case("WIFI-CONNECT-PARAMS-VALID-SECURE", wifi_connect_params_valid_secure),
     Case("WIFI-CONNECT-PARAMS-CHANNEL", wifi_connect_params_channel),
     Case("WIFI-CONNECT-PARAMS-CHANNEL-FAIL", wifi_connect_params_channel_fail),
-#endif
-#if defined(MBED_CONF_APP_WIFI_UNSECURE_SSID)
-    Case("WIFI-CONNECT", wifi_connect),
-#endif
-#if defined(MBED_CONF_APP_WIFI_SECURE_SSID)
     Case("WIFI-CONNECT-SECURE", wifi_connect_secure),
     Case("WIFI-CONNECT-SECURE-FAIL", wifi_connect_secure_fail),
 #endif
-#if defined(MBED_CONF_APP_WIFI_UNSECURE_SSID)
-    Case("WIFI-CONNECT-DISCONNECT-REPEAT", wifi_connect_disconnect_repeat),
-#endif
-    Case("WIFI-SCAN-NULL", wifi_scan_null),
-#if defined(MBED_CONF_APP_WIFI_SECURE_SSID) && defined(MBED_CONF_APP_WIFI_UNSECURE_SSID)
-    Case("WIFI-SCAN", wifi_scan),
-#endif
 };
 
-Specification specification(test_setup, cases);
+Specification specification(test_setup, cases, greentea_continue_handlers);
 
 // Entry point into the tests
-int main() {
+int main()
+{
     return !Harness::run(specification);
 }

@@ -8,6 +8,7 @@
 
 /* mbed Microcontroller Library
  * Copyright (c) 2006-2013 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -144,6 +145,8 @@
 #ifndef MBED_WEAK
 #if defined(__ICCARM__)
 #define MBED_WEAK __weak
+#elif defined(__MINGW32__)
+#define MBED_WEAK
 #else
 #define MBED_WEAK __attribute__((weak))
 #endif
@@ -235,8 +238,8 @@
 
 /** MBED_UNREACHABLE
  *  An unreachable statement. If the statement is reached,
- *  behaviour is undefined. Useful in situations where the compiler
- *  cannot deduce the unreachability of code.
+ *  behavior is undefined. Useful in situations where the compiler
+ *  cannot deduce if the code is unreachable.
  *
  *  @code
  *  #include "mbed_toolchain.h"
@@ -354,7 +357,7 @@
 
 #ifndef MBED_PRINTF_METHOD
 #if defined(__GNUC__) || defined(__CC_ARM)
-#define MBED_PRINTF_METHOD(format_idx, first_param_idx) __attribute__ ((__format__(__printf__, format_idx+1, first_param_idx+1)))
+#define MBED_PRINTF_METHOD(format_idx, first_param_idx) __attribute__ ((__format__(__printf__, format_idx+1, first_param_idx == 0 ? 0 : first_param_idx+1)))
 #else
 #define MBED_PRINTF_METHOD(format_idx, first_param_idx)
 #endif
@@ -370,7 +373,7 @@
 
 #ifndef MBED_SCANF_METHOD
 #if defined(__GNUC__) || defined(__CC_ARM)
-#define MBED_SCANF_METHOD(format_idx, first_param_idx) __attribute__ ((__format__(__scanf__, format_idx+1, first_param_idx+1)))
+#define MBED_SCANF_METHOD(format_idx, first_param_idx) __attribute__ ((__format__(__scanf__, format_idx+1, first_param_idx == 0 ? 0 : first_param_idx+1)))
 #else
 #define MBED_SCANF_METHOD(format_idx, first_param_idx)
 #endif
@@ -396,7 +399,7 @@
 #endif
 
 #ifndef FILEHANDLE
-    typedef int FILEHANDLE;
+typedef int FILEHANDLE;
 #endif
 
 // Backwards compatibility

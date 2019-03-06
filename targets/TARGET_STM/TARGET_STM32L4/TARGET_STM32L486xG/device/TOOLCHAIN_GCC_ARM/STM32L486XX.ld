@@ -1,7 +1,15 @@
+#if !defined(MBED_APP_START)
+  #define MBED_APP_START 0x08000000
+#endif
+
+#if !defined(MBED_APP_SIZE)
+  #define MBED_APP_SIZE 1024k
+#endif
+
 /* Linker script to configure memory regions. */
 MEMORY
-{ 
-  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 1024K
+{
+  FLASH (rx) : ORIGIN = MBED_APP_START, LENGTH = MBED_APP_SIZE
   SRAM2 (rwx)  : ORIGIN = 0x10000188, LENGTH = 32k - 0x188
   SRAM1 (rwx)  : ORIGIN = 0x20000000, LENGTH = 96k
 }
@@ -10,7 +18,7 @@ MEMORY
  * with other linker script that defines memory regions FLASH and RAM.
  * It references following symbols, which must be defined in code:
  *   Reset_Handler : Entry of reset handler
- * 
+ *
  * It defines following symbols, which code can use without definition:
  *   __exidx_start
  *   __exidx_end
@@ -85,13 +93,13 @@ SECTIONS
         *(vtable)
         *(.data*)
 
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* preinit data */
         PROVIDE_HIDDEN (__preinit_array_start = .);
         KEEP(*(.preinit_array))
         PROVIDE_HIDDEN (__preinit_array_end = .);
 
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* init data */
         PROVIDE_HIDDEN (__init_array_start = .);
         KEEP(*(SORT(.init_array.*)))
@@ -99,7 +107,7 @@ SECTIONS
         PROVIDE_HIDDEN (__init_array_end = .);
 
 
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* finit data */
         PROVIDE_HIDDEN (__fini_array_start = .);
         KEEP(*(SORT(.fini_array.*)))
@@ -107,7 +115,7 @@ SECTIONS
         PROVIDE_HIDDEN (__fini_array_end = .);
 
         KEEP(*(.jcr*))
-        . = ALIGN(4);
+        . = ALIGN(8);
         /* All data end */
         __data_end__ = .;
         _edata = .;
@@ -116,12 +124,12 @@ SECTIONS
 
     .bss :
     {
-        . = ALIGN(4);
+        . = ALIGN(8);
         __bss_start__ = .;
         _sbss = .;
         *(.bss*)
         *(COMMON)
-        . = ALIGN(4);
+        . = ALIGN(8);
         __bss_end__ = .;
         _ebss = .;
     } > SRAM1

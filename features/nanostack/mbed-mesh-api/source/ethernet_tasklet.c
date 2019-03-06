@@ -24,6 +24,7 @@
 #include "ns_event_loop.h"
 #include "mesh_interface_types.h"
 #include "eventOS_event.h"
+#include "enet_tasklet.h"
 
 // For tracing we need to define flag, have include and define group
 #include "ns_trace.h"
@@ -119,6 +120,26 @@ void enet_tasklet_main(arm_event_s *event)
         case APPLICATION_EVENT:
             if (event->event_id == APPL_EVENT_CONNECT) {
                 enet_tasklet_configure_and_connect_to_network();
+            } else if (event->event_id == APPL_BACKHAUL_INTERFACE_PHY_UP
+                       && tasklet_data_ptr->tasklet_state != TASKLET_STATE_BOOTSTRAP_STARTED) {
+                // Ethernet cable has been plugged in
+                arm_nwk_interface_configure_ipv6_bootstrap_set(
+                    tasklet_data_ptr->network_interface_id, NET_IPV6_BOOTSTRAP_AUTONOMOUS, NULL);
+                enet_tasklet_configure_and_connect_to_network();
+
+                if (tasklet_data_ptr->poll_network_status_timeout != NULL) {
+                    // Restart poll timer
+                    eventOS_timeout_cancel(tasklet_data_ptr->poll_network_status_timeout);
+                }
+                tasklet_data_ptr->poll_network_status_timeout =
+                    eventOS_timeout_every_ms(enet_tasklet_poll_network_status, 2000, NULL);
+            } else if (event->event_id == APPL_BACKHAUL_INTERFACE_PHY_DOWN) {
+                // Ethernet cable has been removed
+                arm_nwk_interface_down(tasklet_data_ptr->network_interface_id);
+                eventOS_timeout_cancel(tasklet_data_ptr->poll_network_status_timeout);
+                tasklet_data_ptr->poll_network_status_timeout = NULL;
+                memset(tasklet_data_ptr->ip, 0x0, 16);
+                enet_tasklet_network_state_changed(MESH_BOOTSTRAP_STARTED);
             }
             break;
 
@@ -155,13 +176,13 @@ void enet_tasklet_parse_network_event(arm_event_s *event)
             /* No ND Router at current Channel Stack is Already at Idle state */
             tr_info("Bootstrap fail");
             tasklet_data_ptr->tasklet_state = TASKLET_STATE_BOOTSTRAP_FAILED;
-            enet_tasklet_network_state_changed(MESH_DISCONNECTED);
+            enet_tasklet_network_state_changed(MESH_BOOTSTRAP_FAILED);
             break;
         case ARM_NWK_NWK_CONNECTION_DOWN:
             /* Connection to Access point is lost wait for Scan Result */
             tr_info("Connection lost");
             tasklet_data_ptr->tasklet_state = TASKLET_STATE_BOOTSTRAP_FAILED;
-            enet_tasklet_network_state_changed(MESH_DISCONNECTED);
+            enet_tasklet_network_state_changed(MESH_BOOTSTRAP_FAILED);
             break;
         default:
             tr_warn("Unknown event %d", status);
@@ -189,7 +210,7 @@ static void enet_tasklet_poll_network_status(void *param)
             memcpy(tasklet_data_ptr->ip, temp_ipv6, 16);
             uint8_t temp_ipv6_local[16];
             if (arm_net_address_get(tasklet_data_ptr->network_interface_id, ADDR_IPV6_LL, temp_ipv6_local) == 0
-                && (memcmp(temp_ipv6, temp_ipv6_local, 16) != 0)) {
+                    && (memcmp(temp_ipv6, temp_ipv6_local, 16) != 0)) {
                 enet_tasklet_network_state_changed(MESH_CONNECTED_GLOBAL);
             } else {
                 enet_tasklet_network_state_changed(MESH_CONNECTED_LOCAL);;
@@ -197,8 +218,9 @@ static void enet_tasklet_poll_network_status(void *param)
         }
     } else {
         if (tasklet_data_ptr->connection_status != MESH_DISCONNECTED &&
-            tasklet_data_ptr->connection_status != MESH_BOOTSTRAP_STARTED)
+                tasklet_data_ptr->connection_status != MESH_BOOTSTRAP_STARTED) {
             enet_tasklet_network_state_changed(MESH_DISCONNECTED);
+        }
     }
 }
 
@@ -208,8 +230,18 @@ static void enet_tasklet_poll_network_status(void *param)
  */
 void enet_tasklet_configure_and_connect_to_network(void)
 {
-    arm_nwk_interface_up(tasklet_data_ptr->network_interface_id);
-    enet_tasklet_network_state_changed(MESH_BOOTSTRAP_STARTED);
+    int8_t status;
+
+    status = arm_nwk_interface_up(tasklet_data_ptr->network_interface_id);
+    if (status >= 0) {
+        tasklet_data_ptr->tasklet_state = TASKLET_STATE_BOOTSTRAP_STARTED;
+        tr_info("Start Bootstrap");
+        enet_tasklet_network_state_changed(MESH_BOOTSTRAP_STARTED);
+    } else {
+        tasklet_data_ptr->tasklet_state = TASKLET_STATE_BOOTSTRAP_FAILED;
+        tr_err("Bootstrap start failed, %d", status);
+        enet_tasklet_network_state_changed(MESH_BOOTSTRAP_START_FAILED);
+    }
 }
 
 /*
@@ -242,7 +274,7 @@ int8_t enet_tasklet_connect(mesh_interface_cb callback, int8_t nwk_interface_id)
 
     if (re_connecting == false) {
         tasklet_data_ptr->tasklet = eventOS_event_handler_create(&enet_tasklet_main,
-                ARM_LIB_TASKLET_INIT_EVENT);
+                                                                 ARM_LIB_TASKLET_INIT_EVENT);
         if (tasklet_data_ptr->tasklet < 0) {
             // -1 handler already used by other tasklet
             // -2 memory allocation failure
@@ -263,7 +295,7 @@ int8_t enet_tasklet_disconnect(bool send_cb)
         if (tasklet_data_ptr->network_interface_id != INVALID_INTERFACE_ID) {
             status = arm_nwk_interface_down(tasklet_data_ptr->network_interface_id);
             tasklet_data_ptr->network_interface_id = INVALID_INTERFACE_ID;
-            if (send_cb == true) {
+            if (send_cb) {
                 enet_tasklet_network_state_changed(MESH_DISCONNECTED);
             }
         }
@@ -298,4 +330,16 @@ int8_t enet_tasklet_network_init(int8_t device_id)
     arm_nwk_interface_configure_ipv6_bootstrap_set(
         tasklet_data_ptr->network_interface_id, NET_IPV6_BOOTSTRAP_AUTONOMOUS, NULL);
     return tasklet_data_ptr->network_interface_id;
+}
+
+void enet_tasklet_link_state_changed(bool up)
+{
+    arm_event_s event = {
+        .receiver = tasklet_data_ptr->tasklet,
+        .sender =  tasklet_data_ptr->tasklet,
+        .event_type = APPLICATION_EVENT,
+        .priority = ARM_LIB_LOW_PRIORITY_EVENT,
+        .event_id = up ? APPL_BACKHAUL_INTERFACE_PHY_UP : APPL_BACKHAUL_INTERFACE_PHY_DOWN,
+    };
+    eventOS_event_send(&event);
 }

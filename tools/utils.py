@@ -30,6 +30,7 @@ import json
 from collections import OrderedDict
 import logging
 from intelhex import IntelHex
+import io
 
 try:
     unicode
@@ -103,7 +104,8 @@ def run_cmd(command, work_dir=None, chroot=None, redirect=False):
 
     try:
         process = Popen(command, stdout=PIPE,
-                        stderr=STDOUT if redirect else PIPE, cwd=work_dir)
+                        stderr=STDOUT if redirect else PIPE, cwd=work_dir,
+                        universal_newlines=True)
         _stdout, _stderr = process.communicate()
     except OSError:
         print("[OS ERROR] Command: "+(' '.join(command)))
@@ -179,6 +181,27 @@ def mkdir(path):
         makedirs(path)
 
 
+def write_json_to_file(json_data, file_name):
+    """
+    Write json content in file
+    :param json_data:
+    :param file_name:
+    :return:
+    """
+    # Create the target dir for file if necessary
+    test_spec_dir = os.path.dirname(file_name)
+
+    if test_spec_dir:
+        mkdir(test_spec_dir)
+
+    try:
+        with open(file_name, 'w') as f:
+            f.write(json.dumps(json_data, indent=2))
+    except IOError as e:
+        print("[ERROR] Error writing test spec to file")
+        print(e)
+
+
 def copy_file(src, dst):
     """ Implement the behaviour of "shutil.copy(src, dst)" without copying the
     permissions (this was causing errors with directories mounted with samba)
@@ -190,6 +213,23 @@ def copy_file(src, dst):
     if isdir(dst):
         _, base = split(src)
         dst = join(dst, base)
+    copyfile(src, dst)
+
+
+def copy_when_different(src, dst):
+    """ Only copy the file when it's different from its destination.
+
+    Positional arguments:
+    src - the source of the copy operation
+    dst - the destination of the copy operation
+    """
+    if isdir(dst):
+        _, base = split(src)
+        dst = join(dst, base)
+    if exists(dst):
+        with open(src, 'rb') as srcfd, open(dst, 'rb') as dstfd:
+            if srcfd.read() == dstfd.read():
+                return
     copyfile(src, dst)
 
 
@@ -337,6 +377,24 @@ def check_required_modules(required_modules, verbose=True):
     else:
         return True
 
+
+def _ordered_dict_collapse_dups(pair_list):
+    to_ret = OrderedDict()
+    for key, value in pair_list:
+        if key in to_ret:
+            if isinstance(to_ret[key], dict):
+                to_ret[key].update(value)
+            elif isinstance(to_ret[key], list):
+                to_ret[key].extend(value)
+            else:
+                raise ValueError(
+                    "Key %s found twice and is not mergeable" % key
+                )
+        else:
+            to_ret[key] = value
+    return to_ret
+
+
 def json_file_to_dict(fname):
     """ Read a JSON file and return its Python representation, transforming all
     the strings from Unicode to ASCII. The order of keys in the JSON file is
@@ -346,11 +404,13 @@ def json_file_to_dict(fname):
     fname - the name of the file to parse
     """
     try:
-        with open(fname, "r") as file_obj:
-            return json.loads(file_obj.read().encode('ascii', 'ignore'),
-                              object_pairs_hook=OrderedDict)
-    except (ValueError, IOError):
-        sys.stderr.write("Error parsing '%s':\n" % fname)
+        with io.open(fname, encoding='ascii',
+                     errors='ignore') as file_obj:
+            return json.load(
+                file_obj,  object_pairs_hook=_ordered_dict_collapse_dups
+            )
+    except (ValueError, IOError) as e:
+        sys.stderr.write("Error parsing '%s': %s\n" % (fname, e))
         raise
 
 # Wowza, double closure
@@ -435,10 +495,12 @@ def argparse_profile_filestring_type(string):
     absolute path or a file name (expanded to
     mbed-os/tools/profiles/<fname>.json) of a existing file"""
     fpath = join(dirname(__file__), "profiles/{}.json".format(string))
-    if exists(string):
-        return string
-    elif exists(fpath):
+
+    # default profiles are searched first, local ones next.
+    if exists(fpath):
         return fpath
+    elif exists(string):
+        return string
     else:
         raise argparse.ArgumentTypeError(
             "{0} does not exist in the filesystem.".format(string))
@@ -523,10 +585,15 @@ def intelhex_offset(filename, offset):
                             % filename)
     return ih
 
-
 def integer(maybe_string, base):
     """Make an integer of a number or a string"""
     if isinstance(maybe_string, int):
         return maybe_string
     else:
         return int(maybe_string, base)
+
+def generate_update_filename(name, target):
+    return "%s_update.%s" % (
+                    name,
+                    getattr(target, "OUTPUT_EXT_UPDATE", "bin")
+                )

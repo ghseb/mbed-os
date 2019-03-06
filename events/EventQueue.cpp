@@ -1,5 +1,6 @@
 /* events
  * Copyright (c) 2016 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +15,14 @@
  * limitations under the License.
  */
 #include "events/EventQueue.h"
-
 #include "events/mbed_events.h"
-#include "mbed.h"
 
+using mbed::Callback;
 
-EventQueue::EventQueue(unsigned event_size, unsigned char *event_pointer) {
+namespace events {
+
+EventQueue::EventQueue(unsigned event_size, unsigned char *event_pointer)
+{
     if (!event_pointer) {
         equeue_create(&_equeue, event_size);
     } else {
@@ -27,31 +30,38 @@ EventQueue::EventQueue(unsigned event_size, unsigned char *event_pointer) {
     }
 }
 
-EventQueue::~EventQueue() {
+EventQueue::~EventQueue()
+{
     equeue_destroy(&_equeue);
 }
 
-void EventQueue::dispatch(int ms) {
+void EventQueue::dispatch(int ms)
+{
     return equeue_dispatch(&_equeue, ms);
 }
 
-void EventQueue::break_dispatch() {
+void EventQueue::break_dispatch()
+{
     return equeue_break(&_equeue);
 }
 
-unsigned EventQueue::tick() {
+unsigned EventQueue::tick()
+{
     return equeue_tick();
 }
 
-void EventQueue::cancel(int id) {
+void EventQueue::cancel(int id)
+{
     return equeue_cancel(&_equeue, id);
 }
 
-int EventQueue::time_left(int id) {
+int EventQueue::time_left(int id)
+{
     return equeue_timeleft(&_equeue, id);
 }
 
-void EventQueue::background(Callback<void(int)> update) {
+void EventQueue::background(Callback<void(int)> update)
+{
     _update = update;
 
     if (_update) {
@@ -61,10 +71,12 @@ void EventQueue::background(Callback<void(int)> update) {
     }
 }
 
-void EventQueue::chain(EventQueue *target) {
+int EventQueue::chain(EventQueue *target)
+{
     if (target) {
-        equeue_chain(&_equeue, &target->_equeue);
+        return equeue_chain(&_equeue, &target->_equeue);
     } else {
-        equeue_chain(&_equeue, 0);
+        return equeue_chain(&_equeue, 0);
     }
+}
 }

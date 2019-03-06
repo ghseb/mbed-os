@@ -30,76 +30,32 @@
 #error [NOT_SUPPORTED] SIM pin code is needed. Skipping this build.
 #endif
 
+#if defined(TARGET_ADV_WISE_1570) || defined(TARGET_MTB_ADV_WISE_1570)
+#error [NOT_SUPPORTED] target MTB_ADV_WISE_1570 is too unstable for network tests, IoT network is unstable
+#endif
+
 #include "greentea-client/test_env.h"
 #include "unity.h"
 #include "utest.h"
 
 #include "mbed.h"
 
-#include "CellularConnectionFSM.h"
+#include "CellularContext.h"
 
 #if MBED_CONF_CELLULAR_USE_APN_LOOKUP || MBED_CONF_PPP_CELL_IFACE_APN_LOOKUP
 #include "APN_db.h"
 #endif //MBED_CONF_CELLULAR_USE_APN_LOOKUP || MBED_CONF_PPP_CELL_IFACE_APN_LOOKUP
 
-#include "CellularLog.h"
+#include "../../cellular_tests_common.h"
 
 #define NETWORK_TIMEOUT (180*1000)
 #define SOCKET_TIMEOUT (30*1000)
 
 #define ECHO_SERVER_NAME "echo.mbedcloudtesting.com"
-#define ECHO_SERVER_UDP_PORT 7
+#define ECHO_SERVER_UDP_PORT  8877
 
-static CellularConnectionFSM::CellularState cellular_target_state;
-static UARTSerial cellular_serial(MDMTXD, MDMRXD, MBED_CONF_PLATFORM_DEFAULT_SERIAL_BAUD_RATE);
-static rtos::Semaphore network_semaphore(0);
-static CellularConnectionFSM cellular;
-
-#if MBED_CONF_MBED_TRACE_ENABLE
-
-static rtos::Mutex trace_mutex;
-
-void trace_wait()
-{
-    trace_mutex.lock();
-}
-
-void trace_release()
-{
-    trace_mutex.unlock();
-}
-
-static char time_st[sizeof("[12345678]") + 1];
-
-static char *trace_time(size_t ss)
-{
-    snprintf(time_st, sizeof("[12345678]"), "[%08llu]", rtos::Kernel::get_ms_count());
-    return time_st;
-}
-
-static void trace_open()
-{
-    mbed_trace_init();
-    mbed_trace_prefix_function_set(&trace_time);
-    mbed_trace_mutex_wait_function_set(trace_wait);
-    mbed_trace_mutex_release_function_set(trace_release);
-
-    mbed_cellular_trace::mutex_wait_function_set(trace_wait);
-    mbed_cellular_trace::mutex_release_function_set(trace_release);
-}
-
-static void trace_close()
-{
-    mbed_cellular_trace::mutex_wait_function_set(NULL);
-    mbed_cellular_trace::mutex_release_function_set(NULL);
-
-    mbed_trace_free();
-}
-
-#endif // MBED_CONF_MBED_TRACE_ENABLE
-
+static CellularContext *ctx;
 static SocketAddress echo_server_addr;
-
 static rtos::EventFlags eventFlags;
 
 class EchoSocket : public UDPSocket {
@@ -185,37 +141,20 @@ private:
     bool _rx_pending;
 };
 
-static void network_callback(nsapi_event_t ev, intptr_t ptr)
-{
-    if (ev == NSAPI_EVENT_CONNECTION_STATUS_CHANGE) {
-        if (ptr == NSAPI_STATUS_GLOBAL_UP) {
-            MBED_ASSERT(network_semaphore.release() == osOK);
-        }
-    }
-}
-
 static void udp_network_stack()
 {
-    cellular.set_serial(&cellular_serial);
-    TEST_ASSERT(cellular.init() == NSAPI_ERROR_OK);
-#if defined (MDMRTS) && defined (MDMCTS)
-    cellular_serial.set_flow_control(SerialBase::RTSCTS, MDMRTS, MDMCTS);
-#endif
-    cellular.attach(&network_callback);
-    TEST_ASSERT(cellular.start_dispatch() == NSAPI_ERROR_OK);
-    cellular.set_sim_pin(MBED_CONF_APP_CELLULAR_SIM_PIN);
+    ctx = CellularContext::get_default_instance();
+    TEST_ASSERT(ctx != NULL);
+    ctx->set_sim_pin(MBED_CONF_APP_CELLULAR_SIM_PIN);
 #ifdef MBED_CONF_APP_APN
-    CellularNetwork *network = cellular.get_network();
-    TEST_ASSERT(network->set_credentials(MBED_CONF_APP_APN) == NSAPI_ERROR_OK);
+    ctx->set_credentials(MBED_CONF_APP_APN, MBED_CONF_APP_USERNAME, MBED_CONF_APP_PASSWORD);
 #endif
-    cellular_target_state = CellularConnectionFSM::STATE_CONNECTED;
-    TEST_ASSERT(cellular.continue_to_state(cellular_target_state) == NSAPI_ERROR_OK);
-    TEST_ASSERT(network_semaphore.wait(NETWORK_TIMEOUT) == 1);
+    TEST_ASSERT(ctx->connect() == NSAPI_ERROR_OK);
 }
 
 static void udp_gethostbyname()
 {
-    TEST_ASSERT(cellular.get_network()->gethostbyname(ECHO_SERVER_NAME, &echo_server_addr) == 0);
+    TEST_ASSERT(ctx->gethostbyname(ECHO_SERVER_NAME, &echo_server_addr) == 0);
     tr_info("Echo server IP: %s", echo_server_addr.get_ip_address());
     echo_server_addr.set_port(7);
 }
@@ -223,7 +162,7 @@ static void udp_gethostbyname()
 static void udp_socket_send_receive()
 {
     EchoSocket echo_socket(4);
-    TEST_ASSERT(echo_socket.open(cellular.get_network()) == NSAPI_ERROR_OK);
+    TEST_ASSERT(echo_socket.open(ctx) == NSAPI_ERROR_OK);
     echo_socket.set_blocking(true);
     echo_socket.set_timeout(SOCKET_TIMEOUT);
     echo_socket.test_sendto();
@@ -237,7 +176,7 @@ static void udp_socket_send_receive_async()
     TEST_ASSERT(!(eventFlags.clear(async_flag) & osFlagsError));
 
     EchoSocket echo_socket(4);
-    TEST_ASSERT(echo_socket.open(cellular.get_network()) == NSAPI_ERROR_OK);
+    TEST_ASSERT(echo_socket.open(ctx) == NSAPI_ERROR_OK);
     echo_socket.set_async(async_flag);
     echo_socket.test_sendto();
     echo_socket.test_recvfrom();

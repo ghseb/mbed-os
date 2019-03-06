@@ -1,5 +1,18 @@
 /*
- * Copyright (c) 2016 ARM Limited. All rights reserved.
+ * Copyright (c) 2016, 2018, Arm Limited and affiliates.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 #include <inttypes.h>
@@ -22,8 +35,7 @@ uint8_t buf[100];
 uint16_t buf_len;
 uint16_t data_len;
 
-typedef struct 
-{
+typedef struct {
     platform_nvm_status status;
     void *ctx;
 } test_platform_nvm_api_callback_t;
@@ -187,7 +199,7 @@ bool test_cs_nvm_init_finalize()
     }
 
     // finalize NVM - OK
-    if (!test_nvm_finalize()){
+    if (!test_nvm_finalize()) {
         return false;
     }
 
@@ -300,7 +312,7 @@ bool test_cs_nvm_key_create()
     }
 
     // finalize NVM - OK
-    if (!test_nvm_finalize()){
+    if (!test_nvm_finalize()) {
         return false;
     }
 
@@ -341,7 +353,7 @@ bool test_cs_nvm_key_delete()
     ret = platform_nvm_key_delete(test_nvm_callback, NULL, TEST_NS_NVM_HELPER_CONTEXT1);
     if (ret != PLATFORM_NVM_ERROR) {
         return false;
-    }   
+    }
 
     // Configuration-store returns error in OPEN directly
     cfstore_stub.ret_val = ARM_DRIVER_ERROR;
@@ -389,7 +401,7 @@ bool test_cs_nvm_key_delete()
     ret = platform_nvm_key_delete(test_nvm_callback, key_name, TEST_NS_NVM_HELPER_CONTEXT1);
     if (ret != PLATFORM_NVM_OK) {
         return false;
-    }      
+    }
 
     // simulate open
     cfstore_stub.cmd_code = CFSTORE_OPCODE_OPEN;

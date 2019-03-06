@@ -1,4 +1,20 @@
-""" import and bulid a bunch of example programs """
+"""
+Copyright (c) 2017-2019 ARM Limited. All rights reserved.
+
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations 
+"""
 
 from argparse import ArgumentParser
 import os
@@ -7,6 +23,8 @@ import os.path
 import sys
 import subprocess
 import json
+
+""" import and bulid a bunch of example programs """
 
 ROOT = abspath(dirname(dirname(dirname(dirname(__file__)))))
 sys.path.insert(0, ROOT)
@@ -97,20 +115,17 @@ def do_export(args, config, examples):
 
 def do_import(_, config, examples):
     """Do the import step of this process"""
-    lib.source_repos(config, examples)
-    return 0
+    return lib.source_repos(config, examples)
 
 
 def do_clone(_, config, examples):
     """Do the clone step of this process"""
-    lib.clone_repos(config, examples)
-    return 0
+    return lib.clone_repos(config, examples)
 
 
 def do_deploy(_, config, examples):
     """Do the deploy step of this process"""
-    lib.deploy_repos(config, examples)
-    return 0
+    return lib.deploy_repos(config, examples)
 
 
 def do_compile(args, config, examples):
@@ -125,8 +140,7 @@ def do_compile(args, config, examples):
     
 def do_versionning(args, config, examples):
     """ Test update the mbed-os to the version specified by the tag """
-    lib.update_mbedos_version(config, args.tag, examples)
-    return 0
+    return lib.update_mbedos_version(config, args.tag, examples)
 
 
 if __name__ == "__main__":

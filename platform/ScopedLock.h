@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2018 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,12 +61,12 @@ namespace mbed {
 template <typename Lockable>
 class ScopedLock : private NonCopyable<ScopedLock<Lockable> > {
 public:
-    /** Locks given locable object
+    /** Locks given lockable object
      *
      * @param lockable reference to the instance of Lockable object
      * @note lockable object should outlive the ScopedLock object
      */
-    ScopedLock(Lockable& lockable): _lockable(lockable)
+    ScopedLock(Lockable &lockable): _lockable(lockable)
     {
         _lockable.lock();
     }
@@ -75,7 +76,7 @@ public:
         _lockable.unlock();
     }
 private:
-    Lockable& _lockable;
+    Lockable &_lockable;
 };
 
 /**@}*/

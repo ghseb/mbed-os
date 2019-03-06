@@ -225,6 +225,18 @@ extern void sn_coap_protocol_remove_sent_blockwise_message(struct coap_s *handle
 extern int8_t sn_coap_protocol_delete_retransmission(struct coap_s *handle, uint16_t msg_id);
 
 /**
+ * \fn void sn_coap_protocol_delete_retransmission_by_token(struct coap_s *handle)
+ *
+ * \param *handle Pointer to CoAP library handle
+ * \token Token to be removed
+ * \token_len Length of the token
+ * \return returns 0 when success, -1 for invalid parameter, -2 if message was not found
+ *
+ * \brief If re-transmissions are enabled, this function removes message from retransmission buffer.
+ */
+extern int8_t sn_coap_protocol_delete_retransmission_by_token(struct coap_s *handle, uint8_t *token, uint8_t token_len);
+
+/**
  * \fn int8_t sn_coap_convert_block_size(uint16_t block_size)
  *
  * \brief Utility function to convert block size.
@@ -257,6 +269,15 @@ extern int8_t sn_coap_protocol_handle_block2_response_internally(struct coap_s *
 extern void sn_coap_protocol_clear_sent_blockwise_messages(struct coap_s *handle);
 
 /**
+ * \fn void sn_coap_protocol_clear_received_blockwise_messages(struct coap_s *handle)
+ *
+ * \brief This function clears all the received blockwise messages from the linked list.
+ *
+ * \param *handle Pointer to CoAP library handle
+ */
+extern void sn_coap_protocol_clear_received_blockwise_messages(struct coap_s *handle);
+
+/**
  * \fn void sn_coap_protocol_send_rst(struct coap_s *handle, uint16_t msg_id, sn_nsdl_addr_s *addr_ptr, void *param)
  *
  * \brief This function sends a RESET message.
@@ -267,6 +288,15 @@ extern void sn_coap_protocol_clear_sent_blockwise_messages(struct coap_s *handle
  * \param param Pointer that will be passed to tx function callback
  */
 extern void sn_coap_protocol_send_rst(struct coap_s *handle, uint16_t msg_id, sn_nsdl_addr_s *addr_ptr, void *param);
+
+/**
+ * \fn uint16_t sn_coap_protocol_get_configured_blockwise_size(struct coap_s *handle)
+ *
+ * \brief Get configured CoAP payload blockwise size
+ *
+ * \param *handle Pointer to CoAP library handle
+ */
+extern uint16_t sn_coap_protocol_get_configured_blockwise_size(struct coap_s *handle);
 
 #endif /* SN_COAP_PROTOCOL_H_ */
 

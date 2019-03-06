@@ -22,8 +22,7 @@
 
 namespace mbed {
 
-class UBLOX_PPP_CellularPower : public AT_CellularPower
-{
+class UBLOX_PPP_CellularPower : public AT_CellularPower {
 public:
     UBLOX_PPP_CellularPower(ATHandler &atHandler);
     virtual ~UBLOX_PPP_CellularPower();
@@ -33,11 +32,6 @@ public: //from CellularPower
     virtual nsapi_error_t on();
 
     virtual nsapi_error_t off();
-};
-
-MBED_DEPRECATED_SINCE("mbed-os-5.9", "This API will be deprecated, Use UBLOX_PPP_CellularPower instead of UBLOX_LISA_U_CellularPower.")
-class UBLOX_LISA_U_CellularPower  : public UBLOX_PPP_CellularPower
-{
 };
 
 } // namespace mbed

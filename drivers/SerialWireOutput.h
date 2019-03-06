@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2017 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +15,16 @@
  * limitations under the License.
  */
 
+#ifndef MBED_SERIALWIREOUTPUT_H
+#define MBED_SERIALWIREOUTPUT_H
+
 #if defined(DEVICE_ITM)
 
 #include "hal/itm_api.h"
 #include "platform/FileHandle.h"
 
 namespace mbed {
-  
+
 class SerialWireOutput : public FileHandle {
 
 public:
@@ -33,12 +37,8 @@ public:
 
     virtual ssize_t write(const void *buffer, size_t size)
     {
-        const unsigned char *buf = static_cast<const unsigned char *>(buffer);
+        mbed_itm_send_block(ITM_PORT_SWO, buffer, size);
 
-        /* Send buffer one character at a time over the ITM SWO port */
-        for (size_t i = 0; i < size; i++) {
-            mbed_itm_send(ITM_PORT_SWO, buf[i]);
-        }
         return size;
     }
 
@@ -71,7 +71,9 @@ public:
         return 0;
     }
 };
- 
+
 } // namespace mbed
 
-#endif
+#endif // DEVICE_ITM
+
+#endif // MBED_SERIALWIREOUTPUT_H

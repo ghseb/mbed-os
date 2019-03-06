@@ -17,7 +17,6 @@
 
 #include "greentea-client/test_env.h"
 #include "mbed.h"
-#include MBED_CONF_APP_HEADER_FILE
 #include "tcp_tests.h"
 #include "TCPSocket.h"
 #include "unity/unity.h"
@@ -27,14 +26,26 @@ using namespace utest::v1;
 
 void TCPSOCKET_OPEN_CLOSE_REPEAT()
 {
+#if MBED_CONF_NSAPI_SOCKET_STATS_ENABLE
+    int count = fetch_stats();
+    for (int j = 0; j < count; j++) {
+        TEST_ASSERT_EQUAL(SOCK_CLOSED,  tcp_stats[j].state);
+    }
+#endif
     TCPSocket *sock = new TCPSocket;
     if (!sock) {
         TEST_FAIL();
     }
 
     for (int i = 0; i < 2; i++) {
-        TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock->open(get_interface()));
+        TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock->open(NetworkInterface::get_default_instance()));
         TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock->close());
     }
     delete sock;
+#if MBED_CONF_NSAPI_SOCKET_STATS_ENABLE
+    count = fetch_stats();
+    for (int j = 0; j < count; j++) {
+        TEST_ASSERT_EQUAL(SOCK_CLOSED, tcp_stats[j].state);
+    }
+#endif
 }

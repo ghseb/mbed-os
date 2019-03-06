@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2006-2013 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,15 +14,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include <string.h>
 #include "platform/mbed_assert.h"
-#include "device.h"
 
-#include "platform/mbed_interface.h"
 #include "platform/mbed_critical.h"
+#include "platform/mbed_error.h"
 
-void mbed_assert_internal(const char *expr, const char *file, int line)
+MBED_NORETURN void mbed_assert_internal(const char *expr, const char *file, int line)
 {
     core_util_critical_section_enter();
-    mbed_error_printf("mbed assertation failed: %s, file: %s, line %d \n", expr, file, line);
-    mbed_die();
+    mbed_error(MBED_ERROR_ASSERTION_FAILED, expr, 0, file, line);
 }
+

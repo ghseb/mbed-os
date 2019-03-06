@@ -27,10 +27,12 @@
  */
 #include "cmsis.h"
 
+int mbed_sdk_inited = 0;
+
 // This function is called after RAM initialization and before main.
 void mbed_sdk_init()
 {
-#if TARGET_STM32F7
+#if defined(__ICACHE_PRESENT) /* STM32F7 */
     // The mbed_sdk_init can be called either during cold boot or during
     // application boot after bootloader has been executed.
     // In case the bootloader has already enabled the cache,
@@ -41,7 +43,7 @@ void mbed_sdk_init()
     if ((SCB->CCR & (uint32_t)SCB_CCR_DC_Msk) == 0) { // If DCache is disabled
         SCB_EnableDCache();
     }
-#endif /* TARGET_STM32F7 */
+#endif /* __ICACHE_PRESENT */
 
     // Update the SystemCoreClock variable.
     SystemCoreClockUpdate();
@@ -53,4 +55,22 @@ void mbed_sdk_init()
     SetSysClock();
 #endif
     SystemCoreClockUpdate();
+
+    /* Start LSI clock for RTC */
+#if DEVICE_RTC
+#if !MBED_CONF_TARGET_LSE_AVAILABLE
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+
+    if (__HAL_RCC_GET_RTC_SOURCE() != RCC_RTCCLKSOURCE_NO_CLK) {
+        RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI;
+        RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_NONE;
+        RCC_OscInitStruct.LSIState       = RCC_LSI_ON;
+        if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+            error("Init : cannot initialize LSI\n");
+        }
+    }
+#endif /* ! MBED_CONF_TARGET_LSE_AVAILABLE */
+#endif /* DEVICE_RTC */
+
+    mbed_sdk_inited = 1;
 }

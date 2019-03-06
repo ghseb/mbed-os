@@ -76,7 +76,7 @@ struct spi_s {
     PinName pin_mosi;
     PinName pin_sclk;
     PinName pin_ssel;
-#ifdef DEVICE_SPI_ASYNCH
+#if DEVICE_SPI_ASYNCH
     uint32_t event;
     uint8_t transfer_type;
 #endif
@@ -137,8 +137,4 @@ struct flash_s {
 }
 #endif
 
-/* STM32F1 HAL doesn't provide this API called in rtc_api.c */
-#define __HAL_RCC_RTC_CLKPRESCALER(__RTCCLKSource__)
-
 #endif
-

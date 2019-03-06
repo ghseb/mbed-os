@@ -18,11 +18,14 @@ limitations under the License.
 import unittest
 from collections import namedtuple
 from mock import patch, MagicMock
-from tools.build_api import prepare_toolchain, build_project, build_library,\
-    scan_resources
+from tools.build_api import prepare_toolchain, build_project, build_library, merge_region_list
+from tools.resources import Resources
 from tools.toolchains import TOOLCHAINS
 from tools.notifier.mock import MockNotifier
-
+from tools.config import Region
+from tools.utils import ToolException
+from intelhex import IntelHex
+import intelhex
 """
 Tests for build_api.py
 """
@@ -65,9 +68,10 @@ class BuildApiTests(unittest.TestCase):
     def test_always_complete_build(self, *_):
         notify = MockNotifier()
         toolchain = prepare_toolchain(self.src_paths, self.build_path, self.target,
-                                        self.toolchain_name, notify=notify)
+                                      self.toolchain_name, notify=notify)
 
-        res = scan_resources(self.src_paths, toolchain)
+        res = Resources(MockNotifier()).scan_with_toolchain(
+            self.src_paths, toolchain)
 
         toolchain.RESPONSE_FILES=False
         toolchain.config_processed = True
@@ -116,7 +120,7 @@ class BuildApiTests(unittest.TestCase):
         mock_config_init.assert_called_once_with(self.target, self.src_paths,
                                                  app_config=None)
 
-    @patch('tools.build_api.scan_resources')
+    @patch('tools.build_api.Resources')
     @patch('tools.build_api.mkdir')
     @patch('os.path.exists')
     @patch('tools.build_api.prepare_toolchain')
@@ -127,15 +131,20 @@ class BuildApiTests(unittest.TestCase):
         :param mock_prepare_toolchain: mock of function prepare_toolchain
         :param mock_exists: mock of function os.path.exists
         :param _: mock of function mkdir (not tested)
-        :param __: mock of function scan_resources (not tested)
+        :param __: mock of class Resources (not tested)
         :return:
         """
         notify = MockNotifier()
         app_config = "app_config"
         mock_exists.return_value = False
         mock_prepare_toolchain().link_program.return_value = 1, 2
-        mock_prepare_toolchain().config = namedtuple(
-            "Config", "has_regions name lib_config_data")(None, None, {})
+        mock_prepare_toolchain().config = MagicMock(
+            has_regions=None,
+            name=None,
+            lib_config_data=None,
+        )
+        mock_prepare_toolchain().config.deliver_into.return_value = (None, None)
+        mock_prepare_toolchain().config.name = None
 
         build_project(self.src_paths, self.build_path, self.target,
                       self.toolchain_name, app_config=app_config, notify=notify)
@@ -146,7 +155,7 @@ class BuildApiTests(unittest.TestCase):
         self.assertEqual(args[1]['app_config'], app_config,
                          "prepare_toolchain was called with an incorrect app_config")
 
-    @patch('tools.build_api.scan_resources')
+    @patch('tools.build_api.Resources')
     @patch('tools.build_api.mkdir')
     @patch('os.path.exists')
     @patch('tools.build_api.prepare_toolchain')
@@ -157,15 +166,20 @@ class BuildApiTests(unittest.TestCase):
         :param mock_prepare_toolchain: mock of function prepare_toolchain
         :param mock_exists: mock of function os.path.exists
         :param _: mock of function mkdir (not tested)
-        :param __: mock of function scan_resources (not tested)
+        :param __: mock of class Resources (not tested)
         :return:
         """
         notify = MockNotifier()
         mock_exists.return_value = False
         # Needed for the unpacking of the returned value
         mock_prepare_toolchain().link_program.return_value = 1, 2
-        mock_prepare_toolchain().config = namedtuple(
-            "Config", "has_regions name lib_config_data")(None, None, {})
+        mock_prepare_toolchain().config = MagicMock(
+            has_regions=None,
+            name=None,
+            lib_config_data=None,
+        )
+        mock_prepare_toolchain().config.deliver_into.return_value = (None, None)
+        mock_prepare_toolchain().config.name = None
 
         build_project(self.src_paths, self.build_path, self.target,
                       self.toolchain_name, notify=notify)
@@ -176,7 +190,7 @@ class BuildApiTests(unittest.TestCase):
         self.assertEqual(args[1]['app_config'], None,
                          "prepare_toolchain was called with an incorrect app_config")
 
-    @patch('tools.build_api.scan_resources')
+    @patch('tools.build_api.Resources')
     @patch('tools.build_api.mkdir')
     @patch('os.path.exists')
     @patch('tools.build_api.prepare_toolchain')
@@ -187,7 +201,7 @@ class BuildApiTests(unittest.TestCase):
         :param mock_prepare_toolchain: mock of function prepare_toolchain
         :param mock_exists: mock of function os.path.exists
         :param _: mock of function mkdir (not tested)
-        :param __: mock of function scan_resources (not tested)
+        :param __: mock of class Resources (not tested)
         :return:
         """
         notify = MockNotifier()
@@ -203,7 +217,7 @@ class BuildApiTests(unittest.TestCase):
         self.assertEqual(args[1]['app_config'], app_config,
                          "prepare_toolchain was called with an incorrect app_config")
 
-    @patch('tools.build_api.scan_resources')
+    @patch('tools.build_api.Resources')
     @patch('tools.build_api.mkdir')
     @patch('os.path.exists')
     @patch('tools.build_api.prepare_toolchain')
@@ -214,7 +228,7 @@ class BuildApiTests(unittest.TestCase):
         :param mock_prepare_toolchain: mock of function prepare_toolchain
         :param mock_exists: mock of function os.path.exists
         :param _: mock of function mkdir (not tested)
-        :param __: mock of function scan_resources (not tested)
+        :param __: mock of class Resources (not tested)
         :return:
         """
         notify = MockNotifier()
@@ -228,6 +242,37 @@ class BuildApiTests(unittest.TestCase):
                         "prepare_toolchain was not called with app_config")
         self.assertEqual(args[1]['app_config'], None,
                          "prepare_toolchain was called with an incorrect app_config")
+
+    @patch('tools.build_api.intelhex_offset')
+    @patch('tools.config')
+    def test_merge_region_no_fit(self, mock_config, mock_intelhex_offset):
+        """
+        Test that merge region fails as expected when part size overflows region size.
+        """
+        max_addr = 87444
+        # create a dummy hex file with above max_addr
+        mock_intelhex_offset.return_value = IntelHex({0:2, max_addr:0})
+
+        # create application and post-application regions and merge.
+        region_application = Region("application", 10000, 86000, True, "random.hex")
+        region_post_application = Region("postapplication", 100000, 90000, False, None)
+
+        notify = MockNotifier()
+        region_list = [region_application, region_post_application]
+        # path to store the result in, should not get used as we expect exception.
+        res = "./"
+        mock_config.target.restrict_size = 90000
+        toolexception = False
+
+        try:
+            merge_region_list(region_list, res, notify, mock_config)
+        except ToolException:
+            toolexception = True
+        except Exception as e:
+            print("%s %s" % (e.message, e.args))
+
+        self.assertTrue(toolexception, "Expected ToolException not raised")
+
 
 if __name__ == '__main__':
     unittest.main()

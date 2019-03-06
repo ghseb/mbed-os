@@ -1,5 +1,112 @@
 # Change Log
 
+## [v4.7.4](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.7.4) 
+
+- Remove dependency to yotta tool
+- Do not remove stored (GET) blockwise message when EMPTY ACK received
+    When non piggybacked response mode is used original GET request must not be removed from the stored message list.
+    Message is needed for building the next (GET) blockwise message.
+- Move definitions to sn_config.h
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.7.3...v4.7.4)
+
+## [v4.7.3](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.7.3) 
+
+- Do not store EMPTY response to blockwise list
+    An Empty message only contains the 4-byte header so it does not require any blockwise operations.
+    This will fix unneseccary message sending timeouts which leads mbed cloud client to do unnecessary
+    reconnections which increases the network traffic.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.7.2...v4.7.3)
+
+## [v4.7.2](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.7.2) 
+
+- Fix handling of duplicate blockwise ACK's
+    CoAP data buffer was not added into duplication info store when creating response for blockwise request.
+    This leads to case where whole bootstrap flow just timeouts if received any duplicate messages during blockwise operation.
+    Fixes error: IOTCLT-3188 - UDP connection fails for lost ACK sending
+
+- Remove error trace when building reset message without options
+    This makes it possible to build the reset message without allocating option or getting error message.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.7.1...v4.7.2)
+
+## [v4.7.1](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.7.1) 
+
+- Fix CoAP stored blockwise message release and list continue
+	Add re-scan routine goto if message is caused user callback
+	This will fix hard fault when blockwise message sending timeouts. This happens cause same list is manipulated through rx callback.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.7.0...v4.7.1)
+
+## [v4.7.0](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.7.0) 
+
+- Add function that can be used to clear the received blockwise payloads for example in the case of a connection error.
+- Silence compiler warning when CoAP duplicate detection is enabled.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.6.3...v4.7.0)
+
+## [v4.6.3](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.6.3) 
+
+ - Bug fix: Remove timed out blockwise message from resend queue. If blockwise message was timed out message was still kept in the resend queue which causes unnecessary reconnections on client side.
+ - Documentation: Document all the available macros.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.6.2...v4.6.3)
+
+## [v4.6.2](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.6.2) 
+
+Do not clear block2 in subsequent block request.
+
+When sending a request with block2 option, eg. indicating need
+for response to be blockwised, copy the block2 option from the
+sent_blockwise list item so that the block2 option will be added
+to all requests. This fixes an issue where previously the block2
+was only sent for the first blockwise request and not for the
+subsequent ones, including the last request. This made the response
+not follow the request block2 option.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.6.1...v4.6.2)
+
+## [v4.6.1](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.6.1) 
+**Closed issues:**
+-  IOTCLT-2900 - Blockwise handling leaking memory in some error cases
+
+Fix unused parameter compiler warning when blockwise is not used.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.6.0...v4.6.1)
+
+## [v4.6.0](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.6.0) 
+**New feature:**
+-  Add new API which clears one item from the resend queue based on token
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.5.1...v4.6.0)
+
+## [v4.5.1](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.5.1) 
+**Closed issues:**
+ - IOTCLT-2883 - Blockwise observations not completing
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.5.0...v4.5.1)
+
+## [v4.5.0](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.5.0) 
+**Closed issues:**
+ - IIOTCLT-2769 - mbed-coap: extra response received after registration
+
+Added own flag to enable blockwise support, without setting default blockwise
+payload size. This allows to receive blockwise messages while still sending
+without blockwise.
+
+Fix CoAP request blockwise response handling
+When request is sent, response can have blockwise option set. All requests must
+be stored to the linked list.
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.4.4...v4.5.0)
+
+## [v4.4.4](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.4.4) 
+**Closed issues:**
+ - IOTCLT-2638 [GitHub] hardfault during reconnection retry with Thread
+
+-[Full Changelog](https://github.com/ARMmbed/mbed-coap/compare/v4.4.3...v4.4.4)
+
 ## [v4.4.3](https://github.com/ARMmbed/mbed-coap/releases/tag/v4.4.3) 
 **Closed issues:**
  - IOTCLT-2506 [GitHub] Cannot set registration time if server does not use max age option

@@ -16,7 +16,6 @@
  */
 
 #include "mbed.h"
-#include MBED_CONF_APP_HEADER_FILE
 #include "TCPSocket.h"
 #include "greentea-client/test_env.h"
 #include "unity/unity.h"
@@ -25,13 +24,13 @@
 
 using namespace utest::v1;
 
-namespace
-{
-    static const int SIGNAL_SIGIO = 0x1;
-    static const int SIGIO_TIMEOUT = 5000; //[ms]
+namespace {
+static const int SIGNAL_SIGIO = 0x1;
+static const int SIGIO_TIMEOUT = 20000; //[ms]
 }
 
-static void _sigio_handler(osThreadId id) {
+static void _sigio_handler(osThreadId id)
+{
     osSignalSet(id, SIGNAL_SIGIO);
 }
 
@@ -39,11 +38,14 @@ void TCPSOCKET_RECV_TIMEOUT()
 {
     static const int DATA_LEN = 100;
     char buff[DATA_LEN] = {0};
+    int time_allotted = split2half_rmng_tcp_test_time(); // [s]
+    Timer tc_exec_time;
+    tc_exec_time.start();
 
     TCPSocket sock;
     tcpsocket_connect_to_echo_srv(sock);
     sock.set_timeout(100);
-    sock.sigio(callback(_sigio_handler, Thread::gettid()));
+    sock.sigio(callback(_sigio_handler, ThisThread::get_id()));
 
     int recvd = 0;
     int pkt_unrecvd;
@@ -55,22 +57,28 @@ void TCPSOCKET_RECV_TIMEOUT()
         while (pkt_unrecvd) {
             timer.reset();
             timer.start();
-            recvd = sock.recv(&(buff[DATA_LEN-pkt_unrecvd]), pkt_unrecvd);
+            recvd = sock.recv(&(buff[DATA_LEN - pkt_unrecvd]), pkt_unrecvd);
             timer.stop();
 
             if (recvd == NSAPI_ERROR_WOULD_BLOCK) {
-                if(osSignalWait(SIGNAL_SIGIO, SIGIO_TIMEOUT).status == osEventTimeout) {
+                if (tc_exec_time.read() >= time_allotted ||
+                        (osSignalWait(SIGNAL_SIGIO, SIGIO_TIMEOUT).status == osEventTimeout)) {
                     TEST_FAIL();
+                    goto CLEANUP;
                 }
-                printf("MBED: recv() took: %dms\n", timer.read_ms());
-                TEST_ASSERT_INT_WITHIN(50, 150, timer.read_ms());
+                printf("MBED: recv() took: %dus\n", timer.read_us());
+                TEST_ASSERT_INT_WITHIN(51, 150, (timer.read_us() + 500) / 1000);
                 continue;
             } else if (recvd < 0) {
                 printf("[pkt#%02d] network error %d\n", i, recvd);
                 TEST_FAIL();
+                goto CLEANUP;
             }
             pkt_unrecvd -= recvd;
         }
     }
+
+CLEANUP:
+    tc_exec_time.stop();
     TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.close());
 }

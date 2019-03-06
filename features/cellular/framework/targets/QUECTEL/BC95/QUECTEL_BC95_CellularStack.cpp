@@ -41,9 +41,39 @@ nsapi_error_t QUECTEL_BC95_CellularStack::socket_accept(void *server, void **soc
     return NSAPI_ERROR_UNSUPPORTED;
 }
 
+nsapi_error_t QUECTEL_BC95_CellularStack::socket_connect(nsapi_socket_t handle, const SocketAddress &address)
+{
+    CellularSocket *socket = (CellularSocket *)handle;
+
+    _at.lock();
+    if (!socket->created) {
+        const nsapi_error_t error_create = create_socket_impl(socket);
+        if (error_create != NSAPI_ERROR_OK) {
+            return error_create;
+        }
+    }
+
+    _at.cmd_start("AT+NSOCO=");
+    _at.write_int(socket->id);
+    _at.write_string(address.get_ip_address(), false);
+    _at.write_int(address.get_port());
+    _at.cmd_stop();
+    _at.resp_start();
+    _at.resp_stop();
+    _at.unlock();
+
+    if (_at.get_last_error() == NSAPI_ERROR_OK) {
+        socket->remoteAddress = address;
+        socket->connected = true;
+        return NSAPI_ERROR_OK;
+    }
+
+    return NSAPI_ERROR_NO_CONNECTION;
+}
+
 void QUECTEL_BC95_CellularStack::urc_nsonmi()
 {
-    int sock_id =_at.read_int();
+    int sock_id = _at.read_int();
 
     for (int i = 0; i < get_max_socket_count(); i++) {
         CellularSocket *sock = _socket[i];
@@ -61,23 +91,16 @@ int QUECTEL_BC95_CellularStack::get_max_socket_count()
     return BC95_SOCKET_MAX;
 }
 
-int QUECTEL_BC95_CellularStack::get_max_packet_size()
-{
-    return BC95_MAX_PACKET_SIZE;
-}
-
 bool QUECTEL_BC95_CellularStack::is_protocol_supported(nsapi_protocol_t protocol)
 {
-    return (protocol == NSAPI_UDP);
+    return (protocol == NSAPI_UDP || protocol == NSAPI_TCP);
 }
 
 nsapi_error_t QUECTEL_BC95_CellularStack::socket_close_impl(int sock_id)
 {
     _at.cmd_start("AT+NSOCL=");
     _at.write_int(sock_id);
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
 
     tr_info("Close socket: %d error: %d", sock_id, _at.get_last_error());
 
@@ -90,8 +113,30 @@ nsapi_error_t QUECTEL_BC95_CellularStack::create_socket_impl(CellularSocket *soc
     bool socketOpenWorking = false;
 
     if (socket->proto == NSAPI_UDP) {
-
         _at.cmd_start("AT+NSOCR=DGRAM,17,");
+    } else if (socket->proto == NSAPI_TCP) {
+        _at.cmd_start("AT+NSOCR=STREAM,6,");
+    } else {
+        return NSAPI_ERROR_PARAMETER;
+    }
+    _at.write_int(socket->localAddress.get_port());
+    _at.write_int(1);
+    _at.cmd_stop();
+    _at.resp_start();
+    sock_id = _at.read_int();
+    _at.resp_stop();
+
+    socketOpenWorking = (_at.get_last_error() == NSAPI_ERROR_OK);
+
+    if (!socketOpenWorking) {
+        _at.cmd_start("AT+NSOCL=0");
+        _at.cmd_stop_read_resp();
+
+        if (socket->proto == NSAPI_UDP) {
+            _at.cmd_start("AT+NSOCR=DGRAM,17,");
+        } else if (socket->proto == NSAPI_TCP) {
+            _at.cmd_start("AT+NSOCR=STREAM,6,");
+        }
         _at.write_int(socket->localAddress.get_port());
         _at.write_int(1);
         _at.cmd_stop();
@@ -100,23 +145,6 @@ nsapi_error_t QUECTEL_BC95_CellularStack::create_socket_impl(CellularSocket *soc
         _at.resp_stop();
 
         socketOpenWorking = (_at.get_last_error() == NSAPI_ERROR_OK);
-
-        if (!socketOpenWorking) {
-            _at.cmd_start("AT+NSOCL=0");
-            _at.cmd_stop();
-            _at.resp_start();
-            _at.resp_stop();
-
-            _at.cmd_start("AT+NSOCR=DGRAM,17,");
-            _at.write_int(socket->localAddress.get_port());
-            _at.write_int(1);
-            _at.cmd_stop();
-            _at.resp_start();
-            sock_id = _at.read_int();
-            _at.resp_stop();
-
-            socketOpenWorking = (_at.get_last_error() == NSAPI_ERROR_OK);
-        }
     }
 
     if (!socketOpenWorking || (sock_id == -1)) {
@@ -142,19 +170,30 @@ nsapi_error_t QUECTEL_BC95_CellularStack::create_socket_impl(CellularSocket *soc
 }
 
 nsapi_size_or_error_t QUECTEL_BC95_CellularStack::socket_sendto_impl(CellularSocket *socket, const SocketAddress &address,
-        const void *data, nsapi_size_t size)
+                                                                     const void *data, nsapi_size_t size)
 {
     int sent_len = 0;
 
-    char *hexstr = new char[BC95_MAX_PACKET_SIZE*2+1];
-    int hexlen = char_str_to_hex_str((const char*)data, size, hexstr);
+    char *hexstr = new char[size * 2 + 1];
+    int hexlen = char_str_to_hex_str((const char *)data, size, hexstr);
     // NULL terminated for write_string
     hexstr[hexlen] = 0;
-    _at.cmd_start("AT+NSOST=");
-    _at.write_int(socket->id);
-    _at.write_string(address.get_ip_address(), false);
-    _at.write_int(address.get_port());
-    _at.write_int(size <= BC95_MAX_PACKET_SIZE ? size : BC95_MAX_PACKET_SIZE);
+
+    if (socket->proto == NSAPI_UDP) {
+        _at.cmd_start("AT+NSOST=");
+        _at.write_int(socket->id);
+        _at.write_string(address.get_ip_address(), false);
+        _at.write_int(address.get_port());
+        _at.write_int(size);
+    } else if (socket->proto == NSAPI_TCP) {
+        _at.cmd_start("AT+NSOSD=");
+        _at.write_int(socket->id);
+        _at.write_int(size);
+    } else {
+        delete hexstr;
+        return NSAPI_ERROR_PARAMETER;
+    }
+
     _at.write_string(hexstr, false);
     _at.cmd_stop();
     _at.resp_start();
@@ -173,15 +212,15 @@ nsapi_size_or_error_t QUECTEL_BC95_CellularStack::socket_sendto_impl(CellularSoc
 }
 
 nsapi_size_or_error_t QUECTEL_BC95_CellularStack::socket_recvfrom_impl(CellularSocket *socket, SocketAddress *address,
-        void *buffer, nsapi_size_t size)
+                                                                       void *buffer, nsapi_size_t size)
 {
-    nsapi_size_or_error_t recv_len=0;
+    nsapi_size_or_error_t recv_len = 0;
     int port;
     char ip_address[NSAPI_IP_SIZE];
 
     _at.cmd_start("AT+NSORF=");
     _at.write_int(socket->id);
-    _at.write_int(size <= BC95_MAX_PACKET_SIZE ? size : BC95_MAX_PACKET_SIZE);
+    _at.write_int(size);
     _at.cmd_stop();
     _at.resp_start();
     // receiving socket id
@@ -189,7 +228,7 @@ nsapi_size_or_error_t QUECTEL_BC95_CellularStack::socket_recvfrom_impl(CellularS
     _at.read_string(ip_address, sizeof(ip_address));
     port = _at.read_int();
     recv_len = _at.read_int();
-    int hexlen = _at.read_hex_string((char*)buffer, size);
+    int hexlen = _at.read_hex_string((char *)buffer, size);
     // remaining length
     _at.skip_param();
     _at.resp_stop();

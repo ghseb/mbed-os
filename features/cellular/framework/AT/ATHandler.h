@@ -53,16 +53,13 @@ enum DeviceErrorType {
     DeviceErrorTypeErrorCME     // AT ERROR CME
 };
 
-/* struct used when getting at response error. Defines error code and type */
+/** AT response error with error code and type */
 struct device_err_t {
     DeviceErrorType errType;
     int errCode;
 };
 
-/** Class ATHandler
- *
- *  Class for sending AT commands and parsing AT responses.
- */
+/// Class for sending AT commands and parsing AT responses.
 class ATHandler {
 
 public:
@@ -75,7 +72,7 @@ public:
      *  @param send_delay       the minimum delay in ms between the end of last response and the beginning of a new command
      */
     ATHandler(FileHandle *fh, events::EventQueue &queue, int timeout, const char *output_delimiter, uint16_t send_delay = 0);
-    ~ATHandler();
+    virtual ~ATHandler();
 
     /** Return used file handle.
      *
@@ -109,9 +106,8 @@ public:
     /** Remove urc handler from linked list of urc's
      *
      *  @param prefix   Register urc prefix for callback. Urc could be for example "+CMTI: "
-     *  @param callback Callback, which is called if urc is found in AT response
      */
-    void remove_urc_handler(const char *prefix, mbed::Callback<void()> callback);
+    void remove_urc_handler(const char *prefix);
 
     ATHandler *_nextATHandler; // linked list
 
@@ -182,6 +178,13 @@ public:
      */
     void set_is_filehandle_usable(bool usable);
 
+    /** Synchronize AT command and response handling to modem.
+     *
+     *  @param timeout_ms ATHandler timeout when trying to sync. Will be restored when function returns.
+     *  @return true is synchronization was successful, false in case of failure
+     */
+    bool sync(int timeout_ms);
+
 protected:
     void event();
 #ifdef AT_HANDLER_MUTEX
@@ -213,9 +216,7 @@ private:
     uint16_t _at_send_delay;
     uint64_t _last_response_stop;
 
-    bool _fh_sigio_set;
-
-    bool _processing;
+    bool _oob_queued;
     int32_t _ref_count;
     bool _is_fh_usable;
 
@@ -227,7 +228,7 @@ public:
      *
      *  @param cmd  AT command to be written to modem
      */
-    void cmd_start(const char *cmd);
+    virtual void cmd_start(const char *cmd);
 
     /** Writes integer type AT command subparameter. Starts with the delimiter if not the first param after cmd_start.
      *  In case of failure when writing, the last error is set to NSAPI_ERROR_DEVICE_ERROR.
@@ -248,6 +249,11 @@ public:
     /** Stops the AT command by writing command-line terminator CR to mark command as finished.
      */
     void cmd_stop();
+
+    /** Stops the AT command by writing command-line terminator CR to mark command as finished and reads the OK/ERROR response.
+     *
+     */
+    void cmd_stop_read_resp();
 
     /** Write bytes without any subparameter delimiters, such as comma.
      *  In case of failure when writing, the last error is set to NSAPI_ERROR_DEVICE_ERROR.
@@ -278,6 +284,12 @@ public:
      */
     void set_default_delimiter();
 
+    /** Defines behaviour for using or ignoring the delimiter within an AT command
+     *
+     *  @param use_delimiter indicating if delimiter should be used or not
+     */
+    void use_delimiter(bool use_delimiter);
+
     /** Consumes the reading buffer up to the delimiter or stop_tag
      *
      *  @param count number of parameters to be skipped
@@ -303,7 +315,7 @@ public:
      *  Stops on delimiter or stop tag.
      *
      *  @param str output buffer for the read
-     *  @param size maximum number of chars to output
+     *  @param size maximum number of chars to output including NULL
      *  @param read_even_stop_tag if true then try to read even if the stop tag was found previously
      *  @return length of output string or -1 in case of read timeout before delimiter or stop tag is found
      */
@@ -432,6 +444,7 @@ private:
     char _info_resp_prefix[BUFF_SIZE];
     bool _debug_on;
     bool _cmd_start;
+    bool _use_delimiter;
 
     // time when a command or an URC processing was started
     uint64_t _start_time;
@@ -511,12 +524,10 @@ private:
     const char *mem_str(const char *dest, size_t dest_len, const char *src, size_t src_len);
 
     // check is urc is already added
-    bool find_urc_handler(const char *prefix, mbed::Callback<void()> callback);
-
-    ssize_t read(char *buf, size_t size, bool read_even_stop_tag, bool hex);
+    bool find_urc_handler(const char *prefix);
 
     // print contents of a buffer to trace log
-    void debug_print(char *p, int len);
+    void debug_print(const char *p, int len);
 };
 
 } // namespace mbed

@@ -16,7 +16,6 @@
  */
 
 #include "mbed.h"
-#include MBED_CONF_APP_HEADER_FILE
 #include "TCPSocket.h"
 #include "greentea-client/test_env.h"
 #include "unity/unity.h"
@@ -28,12 +27,11 @@ using namespace utest::v1;
 void TCPSOCKET_CONNECT_INVALID()
 {
     TCPSocket sock;
-    TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.open(get_interface()));
+    TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.open(NetworkInterface::get_default_instance()));
 
     TEST_ASSERT(sock.connect(NULL, 9) < 0);
     TEST_ASSERT(sock.connect("", 9) < 0);
     TEST_ASSERT(sock.connect("", 0) < 0);
-    TEST_ASSERT(sock.connect(MBED_CONF_APP_ECHO_SERVER_ADDR, 0) < 0);
     TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.connect(MBED_CONF_APP_ECHO_SERVER_ADDR, 9));
 
     TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.close());

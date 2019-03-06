@@ -28,6 +28,7 @@
 #include "mbed_rtos_storage.h"
 #include "rtos/Kernel.h"
 #include "rtos/Thread.h"
+#include "rtos/ThisThread.h"
 #include "rtos/Mutex.h"
 #include "rtos/RtosTimer.h"
 #include "rtos/Semaphore.h"
@@ -37,12 +38,11 @@
 #include "rtos/EventFlags.h"
 #include "rtos/ConditionVariable.h"
 
+#ifndef MBED_NO_GLOBAL_USING_DIRECTIVE
 using namespace rtos;
+#endif
 
-/* Get mbed lib version number, as RTOS depends on mbed lib features
-   like mbed_error, Callback and others.
-*/
-#include "mbed.h"
+#include "platform/mbed_version.h"
 
 #endif
 

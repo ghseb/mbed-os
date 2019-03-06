@@ -8,7 +8,34 @@ To configure a device to be a CTP echo server, you need to enable the `echo-serv
 
 ## Other configuration options
 
-Default configuration files included with tests are configured for ethernet. For Wi-Fi, set `test-ethernet` to 0 and `test-wifi` to 1. You also need to configure Wi-Fi SSID and security options to the configuration file. 
+Targets with connectivity set the target.network-default-interface-type configuration variable appropriately, either to their only interface or their most-commonly-used one. For targets that provide more than one type of connectivity, you may choose the default by overriding the target.network-default-interface-type configuration variable.
+
+For Ethernet, if you want to overrride the default, set the `json` configuration to:
+
+```
+    "target_overrides": {
+        "*": {
+            "target.network-default-interface-type": "ETHERNET",
+            "nsapi.default-stack": "TEST"
+        }
+    }
+```
+
+For Wi-Fi set the `json` configuration to:
+
+```
+    "target_overrides": {
+        "*": {
+            "target.network-default-interface-type": "WIFI",
+            "nsapi.default-wifi-ssid": "\"WIFI_SSID\"",
+            "nsapi.default-wifi-password": "\"WIFI_PASSWORD\"",
+            "nsapi.default-wifi-security": "WIFI_SECURITY",
+            "nsapi.default-stack": "TEST"
+        }
+    }
+```
+
+For Wi-Fi you also need to configure Wi-Fi SSID and security options to the configuration file. 
 
 ## Example commands
 
@@ -122,6 +149,12 @@ The test case passes if there are no responses from the echo server, but further
  
 1. Sends CTP unicast messages with Ethernet message length from 100 bytes to the maximum defined by the MTU of the EMAC with 50 bytes increments. 
 2. Repeats the sending 10 times. 
+3. Verifies that all are replied. 
+
+### EMAC unicast long
+ 
+1. Sends CTP unicast messages with random Ethernet message length.
+2. Repeats the sending 50000 times. 
 3. Verifies that all are replied. 
 
 ### EMAC multicast filter

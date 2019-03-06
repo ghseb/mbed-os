@@ -90,9 +90,7 @@ nsapi_error_t AT_CellularSIM::set_pin(const char *sim_pin)
     _at.lock();
     _at.cmd_start("AT+CPIN=");
     _at.write_string(sim_pin);
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
     return _at.unlock_return_error();
 }
 
@@ -103,9 +101,7 @@ nsapi_error_t AT_CellularSIM::change_pin(const char *sim_pin, const char *new_pi
     _at.write_string("SC");
     _at.write_string(sim_pin);
     _at.write_string(new_pin);
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
     return _at.unlock_return_error();
 }
 
@@ -118,24 +114,23 @@ nsapi_error_t AT_CellularSIM::set_pin_query(const char *sim_pin, bool query_pin)
         _at.write_string("SC");
         _at.write_int(1);
         _at.write_string(sim_pin);
-        _at.cmd_stop();
-        _at.resp_start();
-        _at.resp_stop();
+        _at.cmd_stop_read_resp();
     } else {
         /* use the SIM unlocked */
         _at.cmd_start("AT+CLCK=");
         _at.write_string("SC");
         _at.write_int(0);
         _at.write_string(sim_pin);
-        _at.cmd_stop();
-        _at.resp_start();
-        _at.resp_stop();
+        _at.cmd_stop_read_resp();
     }
     return _at.unlock_return_error();
 }
 
 nsapi_error_t AT_CellularSIM::get_imsi(char *imsi)
 {
+    if (imsi == NULL) {
+        return NSAPI_ERROR_PARAMETER;
+    }
     _at.lock();
     _at.cmd_start("AT+CIMI");
     _at.cmd_stop();
@@ -148,16 +143,13 @@ nsapi_error_t AT_CellularSIM::get_imsi(char *imsi)
     return _at.unlock_return_error();
 }
 
-nsapi_error_t AT_CellularSIM::get_ccid(char* ccid_buf, size_t buf_size)
+nsapi_error_t AT_CellularSIM::get_iccid(char *buf, size_t buf_size)
 {
-	_at.lock();
-	_at.cmd_start("AT+CCID");
-	_at.cmd_stop();
-	_at.resp_start("+CCID:");
-	int len = _at.read_string(ccid_buf, buf_size);
-	if (len > 0) {
-		ccid_buf[len] = '\0';
-	}
-	_at.resp_stop();
-	return _at.unlock_return_error();
+    _at.lock();
+    _at.cmd_start("AT+CCID?");
+    _at.cmd_stop();
+    _at.resp_start("+CCID:");
+    _at.read_string(buf, buf_size);
+    _at.resp_stop();
+    return _at.unlock_return_error();
 }

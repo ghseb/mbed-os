@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2006-2017 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,15 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "drivers/UARTSerial.h"
 
 #if (DEVICE_SERIAL && DEVICE_INTERRUPTIN)
 
-#include <errno.h>
-#include "UARTSerial.h"
 #include "platform/mbed_poll.h"
 
 #if MBED_CONF_RTOS_PRESENT
-#include "rtos/Thread.h"
+#include "rtos/ThisThread.h"
 #else
 #include "platform/mbed_wait_api.h"
 #endif
@@ -29,11 +29,11 @@
 namespace mbed {
 
 UARTSerial::UARTSerial(PinName tx, PinName rx, int baud) :
-        SerialBase(tx, rx, baud),
-        _blocking(true),
-        _tx_irq_enabled(false),
-        _rx_irq_enabled(true),
-        _dcd_irq(NULL)
+    SerialBase(tx, rx, baud),
+    _blocking(true),
+    _tx_irq_enabled(false),
+    _rx_irq_enabled(true),
+    _dcd_irq(NULL)
 {
     /* Attatch IRQ routines to the serial device. */
     SerialBase::attach(callback(this, &UARTSerial::rx_irq), RxIrq);
@@ -56,7 +56,7 @@ void UARTSerial::set_baud(int baud)
 
 void UARTSerial::set_data_carrier_detect(PinName dcd_pin, bool active_high)
 {
-     delete _dcd_irq;
+    delete _dcd_irq;
     _dcd_irq = NULL;
 
     if (dcd_pin != NC) {
@@ -121,7 +121,8 @@ int UARTSerial::sync()
     return 0;
 }
 
-void UARTSerial::sigio(Callback<void()> func) {
+void UARTSerial::sigio(Callback<void()> func)
+{
     core_util_critical_section_enter();
     _sigio_cb = func;
     if (_sigio_cb) {
@@ -133,13 +134,34 @@ void UARTSerial::sigio(Callback<void()> func) {
     core_util_critical_section_exit();
 }
 
-ssize_t UARTSerial::write(const void* buffer, size_t length)
+/* Special synchronous write designed to work from critical section, such
+ * as in mbed_error_vprintf.
+ */
+ssize_t UARTSerial::write_unbuffered(const char *buf_ptr, size_t length)
+{
+    while (!_txbuf.empty()) {
+        tx_irq();
+    }
+
+    for (size_t data_written = 0; data_written < length; data_written++) {
+        SerialBase::_base_putc(*buf_ptr++);
+        data_written++;
+    }
+
+    return length;
+}
+
+ssize_t UARTSerial::write(const void *buffer, size_t length)
 {
     size_t data_written = 0;
     const char *buf_ptr = static_cast<const char *>(buffer);
 
     if (length == 0) {
         return 0;
+    }
+
+    if (core_util_in_critical_section()) {
+        return write_unbuffered(buf_ptr, length);
     }
 
     api_lock();
@@ -178,10 +200,10 @@ ssize_t UARTSerial::write(const void* buffer, size_t length)
 
     api_unlock();
 
-    return data_written != 0 ? (ssize_t) data_written : (ssize_t) -EAGAIN;
+    return data_written != 0 ? (ssize_t) data_written : (ssize_t) - EAGAIN;
 }
 
-ssize_t UARTSerial::read(void* buffer, size_t length)
+ssize_t UARTSerial::read(void *buffer, size_t length)
 {
     size_t data_read = 0;
 
@@ -235,7 +257,8 @@ void UARTSerial::wake()
     }
 }
 
-short UARTSerial::poll(short events) const {
+short UARTSerial::poll(short events) const
+{
 
     short revents = 0;
     /* Check the Circular Buffer if space available for writing out */
@@ -330,7 +353,7 @@ void UARTSerial::wait_ms(uint32_t millisec)
      * want to just sleep until next tick.
      */
 #if MBED_CONF_RTOS_PRESENT
-    rtos::Thread::wait(millisec);
+    rtos::ThisThread::sleep_for(millisec);
 #else
     ::wait_ms(millisec);
 #endif

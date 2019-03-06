@@ -93,37 +93,28 @@ The tables must be placed in a C compilation file.
 
 ### Serial
 
-The serial implementation uses the UARTE module which works exclusively through EasyDMA and RAM buffers. For optimal performance, each configured instance (NRF52832 has 1, NRF52840 has 2) has three buffers statically assigned:
-
-1. Rx DMA buffer, which EasyDMA is currently writing to.
-1. Rx DMA buffer, pre-loaded in EasyDMA for automatic switchover.
-1. Rx FIFO buffer, for serving data to the application.
-
-When the first DMA buffer is full or flushed the interrupt handler will automatically copy the DMA buffer to the FIFO buffer. This happens in interrupt context to avoid data loss and with UARTE interrupts set at the highest priority. The FIFO buffer is backed by the Nordic atomic fifo, which can be read and written to safely without disabling interrupts.
+The serial implementation uses the UARTE module which works exclusively through EasyDMA and RAM buffers.
+To ensure no data is lost a FIFO is used to buffer data received. The FIFO buffer is backed by the Nordic atomic fifo, which can be read and written to safely without disabling interrupts.
 
 #### Customization
 
-All buffers can be resized to fit the application:
+The FIFOs can be resized to fit the application:
 
 ```
     "name": "nordic",
     "config": {
-        "uart-dma-size": {
-            "help": "UART DMA buffer. 2 buffers per instance. DMA buffer is filled by UARTE",
-            "value": 8
-        },
-        "uart-0-fifo-size": {
+        "uart_0_fifo_size": {
             "help": "UART0 FIFO buffer. FIFO buffer is filled from DMA buffer.",
             "value": 32
         },
-        "uart-1-fifo-size": {
+        "uart_1_fifo_size": {
             "help": "UART1 FIFO buffer. FIFO buffer is filled from DMA buffer.",
             "value": 32
         }
     }
 ```
 
-All DMA buffers are the same size and must be at least 5 bytes due to hardware restrictions. DMA buffers should be sized to handle the worst expected interrupt latency. FIFO buffers can be configured per instance and the size should reflect the largest expected burst data. For example, a serial debug port might receive a line of data at a time, so an 80 byte FIFO buffer would be adequate. A serial port connected to a wifi radio should have a FIFO buffer in the kilo byte range.
+FIFO buffers can be configured per instance and the size should reflect the largest expected burst data. For example, a serial debug port might receive a line of data at a time, so an 80 byte FIFO buffer would be adequate. A serial port connected to a wifi radio should have a FIFO buffer in the kilo byte range.
 
 For the NRF52840, UARTE instances are assigned based on pins and calling order. Serial objects with the same pin configurations will go to the same instance. A custom configuration table can be provided by overriding the weakly defined default empty table. In the example below, serial objects using pins `p1` and `p2` for `Tx` and `Rx` will always be assigned to `Instance 1` and serial objects using pins `p3` and `p4` for `Tx` and `Rx` will be assigned to `Instance 0` regardless of calling order. The custom configuration table must always be terminated with a row of `NC`.
 
@@ -137,12 +128,22 @@ const PinMapI2C PinMap_UART[] = {
 
 The table must be placed in a C compilation file.
 
+#### Flow Control (RTS/CTS)
 
-#### RTC2
+When hardware flow control is enabled the FIFO buffers can be reduced to save RAM. Flow control ensures that bytes cannot be dropped due to poor interrupt latency.
 
-Because each DMA buffer must be at least 5 bytes deep, each buffer is automatically flushed after a certain idle period to ensure low latency and correctness. This idle timeout is implemented using 2 of the 4 channels on RTC instance 2. This leaves RTC0 for the SoftDevice and RTC1 for Mbed tickers.
+#### SWI0
 
-The RTC2 ISR is set at the lowest interrupt priority to ensure that UARTE interrupts take precedence. The last 2 of the 4 RTC channels are used for decoupling UARTE ISR context from Mbed IRQ events. This ensures that any user code will only delay other user callbacks and idle flushing and puts an upper bound on the interrupt handling time for the UARTE ISR.
+To minimize the time spend in the highest priority interrupt handler all callbacks to the user provided IRQ handlers are deferred through Software Interrupts running at lowest priority. SWI0 is reserved by the serial implementation.
+
+
+#### Asserts
+
+The nordic asserts have been redirected to mbed error handling when building in debug mode.
+The SDK file `mbed-os/targets/TARGET_NORDIC/TARGET_NRF5x/TARGET_SDK_14_2/libraries/util/nrf_assert.h` was modified to enable the asserts when NDEBUG is not defined.
+
+The assert handler is defined in mbed-os/features/FEATURE_BLE/targets/TARGET_NORDIC/TARGET_NRF5x/source/btle/btle.cpp : assert_nrf_callback() which forwards assert failures to thye mbed error() handler.
+
 
 
 #### Asserts
@@ -160,6 +161,18 @@ The assert handler is defined in mbed-os/features/FEATURE_BLE/targets/TARGET_NOR
  * The asynchronous read and write implementation currently only support 255 byte transfers.
  * The EasyDMA hardware can only read from RAM, which means all Tx buffers must reside in RAM. If a Tx buffer residing in flash is passed to the asynchronous write function, the function will try to copy the Tx buffer to a temporary internal buffer and transmit the data from there.
  * It is not possible to do an asynchronous write from flash and receive non-asynchronously at the same time since the non-asynchronous receive buffer is being used as the temporary transmission buffer.
+ * The driver will flush the DMA buffer after a configurable timeout. During this process the UART will be halted and therefor unable to receive data. Hardware flow control should be enabled to avoid missing any data during this window.
+
+#### Serial Wire Output (SWO)
+
+On the nRF52832 pin 18 (p18 or p0_18) is the SWO pin and a GPIO pin.  On the nRF52_DK and DELTA_DFBM_NQ620 targets p18 is also mapped to LED2, so the ITM has been removed from these targets to avoid contention.  If you need SWO capability instead of LED2, add the ITM through ```mbed_app.json```:
+```
+    "target_overrides": {
+        "*": {
+            "target.device_has_add": ["ITM"]
+        }
+    }
+```
 
 ## SoftDevice
 

@@ -18,7 +18,7 @@
  *
  */
 
-#if defined(DEVICE_TRNG)
+#if DEVICE_TRNG
 
 #include <stdlib.h>
 #include "cmsis.h"
@@ -33,17 +33,23 @@ void trng_init(trng_t *obj)
     uint32_t dummy;
 
     /*  We're only supporting a single user of RNG */
-    if (core_util_atomic_incr_u8(&users, 1) > 1 ) {
+    if (core_util_atomic_incr_u8(&users, 1) > 1) {
         error("Only 1 RNG instance supported\r\n");
     }
 
-#if defined(TARGET_STM32L4)
+#if defined(RCC_PERIPHCLK_RNG)
     RCC_PeriphCLKInitTypeDef PeriphClkInitStruct;
 
     /*Select PLLQ output as RNG clock source */
     PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_RNG;
+#if ((CLOCK_SOURCE) & USE_PLL_MSI)
+    PeriphClkInitStruct.RngClockSelection = RCC_RNGCLKSOURCE_MSI;
+#else
     PeriphClkInitStruct.RngClockSelection = RCC_RNGCLKSOURCE_PLL;
-    HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
+#endif
+    if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK) {
+        error("RNG clock configuration error\n");
+    }
 #endif
 
     /* RNG Peripheral clock enable */
@@ -77,11 +83,11 @@ int trng_get_bytes(trng_t *obj, uint8_t *output, size_t length, size_t *output_l
     *output_length = 0;
 
     /* Get Random byte */
-    while ((*output_length < length) && (ret ==0)) {
-        if ( HAL_RNG_GenerateRandomNumber(&obj->handle, (uint32_t *)random ) != HAL_OK) {
-                ret = -1;
+    while ((*output_length < length) && (ret == 0)) {
+        if (HAL_RNG_GenerateRandomNumber(&obj->handle, (uint32_t *)random) != HAL_OK) {
+            ret = -1;
         } else {
-            for (uint8_t i =0; (i < 4) && (*output_length < length) ; i++) {
+            for (uint8_t i = 0; (i < 4) && (*output_length < length) ; i++) {
                 *output++ = random[i];
                 *output_length += 1;
                 random[i] = 0;
@@ -90,11 +96,11 @@ int trng_get_bytes(trng_t *obj, uint8_t *output, size_t length, size_t *output_l
     }
 
     /* Just be extra sure that we didn't do it wrong */
-    if( ( __HAL_RNG_GET_FLAG(&obj->handle, (RNG_FLAG_CECS | RNG_FLAG_SECS)) ) != 0 ) {
+    if ((__HAL_RNG_GET_FLAG(&obj->handle, (RNG_FLAG_CECS | RNG_FLAG_SECS))) != 0) {
         ret = -1;
     }
 
-    return( ret );
+    return (ret);
 }
 
 #endif

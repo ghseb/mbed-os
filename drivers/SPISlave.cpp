@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2006-2013 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,32 +25,37 @@ SPISlave::SPISlave(PinName mosi, PinName miso, PinName sclk, PinName ssel) :
     _bits(8),
     _mode(0),
     _hz(1000000)
- {
+{
     spi_init(&_spi, mosi, miso, sclk, ssel);
     spi_format(&_spi, _bits, _mode, 1);
     spi_frequency(&_spi, _hz);
 }
 
-void SPISlave::format(int bits, int mode) {
+void SPISlave::format(int bits, int mode)
+{
     _bits = bits;
     _mode = mode;
     spi_format(&_spi, _bits, _mode, 1);
 }
 
-void SPISlave::frequency(int hz) {
+void SPISlave::frequency(int hz)
+{
     _hz = hz;
     spi_frequency(&_spi, _hz);
 }
 
-int SPISlave::receive(void) {
-    return(spi_slave_receive(&_spi));
+int SPISlave::receive(void)
+{
+    return (spi_slave_receive(&_spi));
 }
 
-int SPISlave::read(void) {
-    return(spi_slave_read(&_spi));
+int SPISlave::read(void)
+{
+    return (spi_slave_read(&_spi));
 }
 
-void SPISlave::reply(int value) {
+void SPISlave::reply(int value)
+{
     spi_slave_write(&_spi, value);
 }
 

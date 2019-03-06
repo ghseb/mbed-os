@@ -208,7 +208,7 @@ int equeue_timeleft(equeue_t *q, int id);
 // of hardware timers or even other event loops, allowing an event queue to
 // be effectively backgrounded.
 void equeue_background(equeue_t *queue,
-        void (*update)(void *timer, int ms), void *timer);
+                       void (*update)(void *timer, int ms), void *timer);
 
 // Chain an event queue onto another event queue
 //
@@ -220,7 +220,10 @@ void equeue_background(equeue_t *queue,
 //
 // The equeue_chain function allows multiple equeues to be composed, sharing
 // the context of a dispatch loop while still being managed independently.
-void equeue_chain(equeue_t *queue, equeue_t *target);
+//
+// If the event queue chaining fails, equeue_chain returns a negative,
+// platform-specific error code.
+int equeue_chain(equeue_t *queue, equeue_t *target);
 
 
 #ifdef __cplusplus

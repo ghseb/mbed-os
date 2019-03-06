@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2006-2013 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +16,7 @@
  */
 #include "hal/gpio_api.h"
 
-static inline void _gpio_init_in(gpio_t* gpio, PinName pin, PinMode mode)
+static inline void _gpio_init_in(gpio_t *gpio, PinName pin, PinMode mode)
 {
     gpio_init(gpio, pin);
     if (pin != NC) {
@@ -24,7 +25,7 @@ static inline void _gpio_init_in(gpio_t* gpio, PinName pin, PinMode mode)
     }
 }
 
-static inline void _gpio_init_out(gpio_t* gpio, PinName pin, PinMode mode, int value)
+static inline void _gpio_init_out(gpio_t *gpio, PinName pin, PinMode mode, int value)
 {
     gpio_init(gpio, pin);
     if (pin != NC) {
@@ -34,27 +35,33 @@ static inline void _gpio_init_out(gpio_t* gpio, PinName pin, PinMode mode, int v
     }
 }
 
-void gpio_init_in(gpio_t* gpio, PinName pin) {
+void gpio_init_in(gpio_t *gpio, PinName pin)
+{
     gpio_init_in_ex(gpio, pin, PullDefault);
 }
 
-void gpio_init_in_ex(gpio_t* gpio, PinName pin, PinMode mode) {
+void gpio_init_in_ex(gpio_t *gpio, PinName pin, PinMode mode)
+{
     _gpio_init_in(gpio, pin, mode);
 }
 
-void gpio_init_out(gpio_t* gpio, PinName pin) {
+void gpio_init_out(gpio_t *gpio, PinName pin)
+{
     gpio_init_out_ex(gpio, pin, 0);
 }
 
-void gpio_init_out_ex(gpio_t* gpio, PinName pin, int value) {
+void gpio_init_out_ex(gpio_t *gpio, PinName pin, int value)
+{
     _gpio_init_out(gpio, pin, PullNone, value);
 }
 
-void gpio_init_inout(gpio_t* gpio, PinName pin, PinDirection direction, PinMode mode, int value) {
+void gpio_init_inout(gpio_t *gpio, PinName pin, PinDirection direction, PinMode mode, int value)
+{
     if (direction == PIN_INPUT) {
         _gpio_init_in(gpio, pin, mode);
-        if (pin != NC)
-            gpio_write(gpio, value); // we prepare the value in case it is switched later
+        if (pin != NC) {
+            gpio_write(gpio, value);    // we prepare the value in case it is switched later
+        }
     } else {
         _gpio_init_out(gpio, pin, mode, value);
     }

@@ -17,17 +17,23 @@ limitations under the License.
 import re
 from os import remove
 from os.path import join, splitext, exists
+from distutils.version import LooseVersion
 
+from tools.targets import CORE_ARCH
 from tools.toolchains import mbedToolchain, TOOLCHAIN_PATHS
 from tools.hooks import hook_tool
+from tools.utils import run_cmd, NotSupportedException
 
 class IAR(mbedToolchain):
+    OFFICIALLY_SUPPORTED = True
     LIBRARY_EXT = '.a'
     LINKER_EXT = '.icf'
     STD_LIB_NAME = "%s.a"
 
     DIAGNOSTIC_PATTERN = re.compile('"(?P<file>[^"]+)",(?P<line>[\d]+)\s+(?P<severity>Warning|Error|Fatal error)(?P<message>.+)')
     INDEX_PATTERN  = re.compile('(?P<col>\s*)\^')
+    IAR_VERSION_RE = re.compile(b"IAR ANSI C/C\+\+ Compiler V(\d+\.\d+)")
+    IAR_VERSION = LooseVersion("7.80")
 
     @staticmethod
     def check_executable():
@@ -38,23 +44,34 @@ class IAR(mbedToolchain):
 
     def __init__(self, target, notify=None, macros=None, build_profile=None,
                  build_dir=None):
-        mbedToolchain.__init__(self, target, notify, macros, build_dir=build_dir,
-                               build_profile=build_profile)
-        if target.core == "Cortex-M7F" or target.core == "Cortex-M7FD":
-            cpuchoice = "Cortex-M7"
-        elif target.core.startswith("Cortex-M23"):
-            cpuchoice = "8-M.baseline"
-        elif target.core.startswith("Cortex-M33"):
-            cpuchoice = "8-M.mainline"
-        else:
-            cpuchoice = target.core
+        mbedToolchain.__init__(self, target, notify, macros, build_dir=build_dir, build_profile=build_profile)
+        core = target.core
+        if CORE_ARCH[target.core] == 8:
+            # Add linking time preprocessor macro DOMAIN_NS
+            if target.core.endswith("-NS"):
+                define_string = self.make_ld_define("DOMAIN_NS", "0x1")
+                self.flags["ld"].append(define_string)
+                core = target.core[:-3]
+            else:
+                # Create Secure library
+                self.flags["asm"] += ["--cmse"]
+                self.flags["common"] += ["--cmse"]
+                secure_file = join(build_dir, "cmse_lib.o")
+                self.flags["ld"] += ["--import_cmse_lib_out=%s" % secure_file]
+
+        cpu = {
+            "Cortex-M7FD": "Cortex-M7.fp.dp",
+            "Cortex-M7F": "Cortex-M7.fp.sp",
+            "Cortex-M33": "Cortex-M33.no_dsp",
+            "Cortex-M33F": "Cortex-M33.fp.no_dsp",
+            "Cortex-M33FE": "Cortex-M33.fp"}.get(core, core)
 
         # flags_cmd are used only by our scripts, the project files have them already defined,
         # using this flags results in the errors (duplication)
         # asm accepts --cpu Core or --fpu FPU, not like c/c++ --cpu=Core
-        asm_flags_cmd = ["--cpu", cpuchoice]
+        asm_flags_cmd = ["--cpu", cpu]
         # custom c flags
-        c_flags_cmd = ["--cpu", cpuchoice]
+        c_flags_cmd = ["--cpu", cpu]
 
         c_flags_cmd.extend([
             "--thumb", "--dlib_config", "DLib_Config_Full.h"
@@ -63,20 +80,6 @@ class IAR(mbedToolchain):
         cxx_flags_cmd = [
             "--c++", "--no_rtti", "--no_exceptions"
         ]
-        if target.core == "Cortex-M7FD":
-            asm_flags_cmd += ["--fpu", "VFPv5"]
-            c_flags_cmd.append("--fpu=VFPv5")
-        elif target.core == "Cortex-M7F":
-            asm_flags_cmd += ["--fpu", "VFPv5_sp"]
-            c_flags_cmd.append("--fpu=VFPv5_sp")
-        elif target.core == "Cortex-M23" or target.core == "Cortex-M33":
-            self.flags["asm"] += ["--cmse"]
-            self.flags["common"] += ["--cmse"]
-
-        # Create Secure library
-        if target.core == "Cortex-M23" or self.target.core == "Cortex-M33":
-            secure_file = join(build_dir, "cmse_lib.o")
-            self.flags["ld"] += ["--import_cmse_lib_out=%s" % secure_file]
 
         IAR_BIN = join(TOOLCHAIN_PATHS['IAR'], "bin")
         main_cc = join(IAR_BIN, "iccarm")
@@ -90,6 +93,27 @@ class IAR(mbedToolchain):
         self.ld   = [join(IAR_BIN, "ilinkarm")] + self.flags['ld']
         self.ar = join(IAR_BIN, "iarchive")
         self.elf2bin = join(IAR_BIN, "ielftool")
+
+    def version_check(self):
+        stdout, _, retcode = run_cmd([self.cc[0], "--version"], redirect=True)
+        msg = None
+        match = self.IAR_VERSION_RE.search(stdout.encode("utf-8"))
+        found_version = match.group(1).decode("utf-8") if match else None
+        if found_version and LooseVersion(found_version) != self.IAR_VERSION:
+            msg = "Compiler version mismatch: Have {}; expected {}".format(
+                found_version, self.IAR_VERSION)
+        elif not match or len(match.groups()) != 1:
+            msg = ("Compiler version mismatch: Could Not detect compiler "
+                   "version; expected {}".format(self.IAR_VERSION))
+        if msg:
+            self.notify.cc_info({
+                "message": msg,
+                "file": "",
+                "line": "",
+                "col": "",
+                "severity": "Warning",
+            })
+
 
     def parse_dependencies(self, dep_path):
         return [(self.CHROOT if self.CHROOT else '')+path.strip() for path in open(dep_path).readlines()
@@ -140,17 +164,26 @@ class IAR(mbedToolchain):
 
     def get_compile_options(self, defines, includes, for_asm=False):
         opts = ['-D%s' % d for d in defines]
-        if for_asm :
+        if for_asm:
+            config_macros = self.config.get_config_data_macros()
+            macros_cmd = ['"-D%s"' % d for d in config_macros if not '"' in d]
+            if self.RESPONSE_FILES:
+                via_file = self.make_option_file(
+                    macros_cmd, "asm_macros_{}.xcl")
+                opts += ['-f', via_file]
+            else:
+                opts += macros_cmd
             return opts
-        if self.RESPONSE_FILES:
-            opts += ['-f', self.get_inc_file(includes)]
         else:
-            opts += ["-I%s" % i for i in includes]
+            if self.RESPONSE_FILES:
+                opts += ['-f', self.get_inc_file(includes)]
+            else:
+                opts += ["-I%s" % i for i in includes]
+            config_header = self.get_config_header()
+            if config_header is not None:
+                opts = opts + self.get_config_option(config_header)
 
-        config_header = self.get_config_header()
-        if config_header is not None:
-            opts = opts + self.get_config_option(config_header)
-        return opts
+            return opts
 
     @hook_tool
     def assemble(self, source, object, includes):
@@ -239,7 +272,7 @@ class IAR(mbedToolchain):
 
     @staticmethod
     def make_ld_define(name, value):
-        return "--config_def %s=0x%x" % (name, value)
+        return "--config_def %s=%s" % (name, value)
 
     @staticmethod
     def redirect_symbol(source, sync, build_dir):

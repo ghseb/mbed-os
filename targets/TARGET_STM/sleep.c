@@ -31,11 +31,12 @@
 
 #include "sleep_api.h"
 #include "us_ticker_api.h"
-#include "hal_tick.h"
+#include "us_ticker_data.h"
 #include "mbed_critical.h"
 #include "mbed_error.h"
 
-extern void rtc_synchronize(void);
+extern void save_timer_ctx(void);
+extern void restore_timer_ctx(void);
 
 /*  Wait loop - assuming tick is 1 us */
 static void wait_loop(uint32_t timeout)
@@ -49,88 +50,67 @@ static void wait_loop(uint32_t timeout)
     return;
 }
 
-// On L4 platforms we've seen unstable PLL CLK configuraiton
-// when DEEP SLEEP exits just few µs after being entered
-// So we need to force MSI usage before setting clocks again
-static void ForceClockOutofDeepSleep(void)
+
+static void ForcePeriphOutofDeepSleep(void)
 {
-    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
     uint32_t pFLatency = 0;
+    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+    /* Get the Clocks configuration according to the internal RCC registers */
+    HAL_RCC_GetClockConfig(&RCC_ClkInitStruct, &pFLatency);
+
+#ifdef RCC_CLOCKTYPE_PCLK2
+    RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                                   | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
+    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+#else /* RCC_CLOCKTYPE_PCLK2 */
+    RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+                                   | RCC_CLOCKTYPE_PCLK1);
+#endif /* RCC_CLOCKTYPE_PCLK2 */
+
+#if defined (RCC_SYSCLKSOURCE_MSI) /* STM32Lx */
+    RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_MSI;
+#else /* defined RCC_SYSCLKSOURCE_MSI */
+    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+#endif /* defined RCC_SYSCLKSOURCE_MSI */
+
+    RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
+    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+
+    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, pFLatency) != HAL_OK) {
+        error("ForcePeriphOutofDeepSleep clock issue\r\n");
+    }
+}
+
+
+static void ForceOscOutofDeepSleep(void)
+{
+    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
 
     /* Enable Power Control clock */
     __HAL_RCC_PWR_CLK_ENABLE();
 
-#ifdef PWR_FLAG_VOS
-    /* Poll VOSF bit of in PWR_CSR. Wait until it is reset to 0 */
-    //while (__HAL_PWR_GET_FLAG(PWR_FLAG_VOS) != RESET) {};
-#endif
-
     /* Get the Oscillators configuration according to the internal RCC registers */
     HAL_RCC_GetOscConfig(&RCC_OscInitStruct);
 
-#if (TARGET_STM32L4 || TARGET_STM32L1) /* MSI used for L4 */
-    /**Initializes the CPU, AHB and APB busses clocks
-    */
+#if defined (RCC_SYSCLKSOURCE_MSI) /* STM32Lx */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
     RCC_OscInitStruct.MSIState = RCC_MSI_ON;
     RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
     RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_4; // Intermediate freq, 1MHz range
     RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-        error("clock issue\r\n");
-    }
-
-    /* Get the Clocks configuration according to the internal RCC registers */
-    HAL_RCC_GetClockConfig(&RCC_ClkInitStruct, &pFLatency);
-
-    // Select HSI ss system clock source as a first step
-#ifdef RCC_CLOCKTYPE_PCLK2
-    RCC_ClkInitStruct.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK 
-                            | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-#else
-    RCC_ClkInitStruct.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK 
-                            | RCC_CLOCKTYPE_PCLK1);
-#endif
-    RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_MSI;
-    RCC_ClkInitStruct.AHBCLKDivider  = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, pFLatency) != HAL_OK) {
-        error("clock issue\r\n");
-    }
-#else  /* HSI used on others */
-    /**Initializes the CPU, AHB and APB busses clocks
-    */
+#else /* defined RCC_SYSCLKSOURCE_MSI */
     RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
     RCC_OscInitStruct.HSIState = RCC_HSI_ON;
     RCC_OscInitStruct.HSICalibrationValue = 16;
     RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+#endif /* defined RCC_SYSCLKSOURCE_MSI */
+
     if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-        error("clock issue");
+        error("ForceOscOutofDeepSleep clock issue\r\n");
     }
-
-    /* Get the Clocks configuration according to the internal RCC registers */
-    HAL_RCC_GetClockConfig(&RCC_ClkInitStruct, &pFLatency);
-
-    /**Initializes the CPU, AHB and APB busses clocks
-    */
-#ifdef RCC_CLOCKTYPE_PCLK2
-    RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                            |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2);
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-#else
-    RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                            |RCC_CLOCKTYPE_PCLK1);
-#endif
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, pFLatency) != HAL_OK) {
-        error("clock issue");
-    }
-#endif // TARGET_STM32L4
 }
+
 
 void hal_sleep(void)
 {
@@ -138,7 +118,7 @@ void hal_sleep(void)
     core_util_critical_section_enter();
 
     // Request to enter SLEEP mode
-#if TARGET_STM32L4
+#ifdef PWR_CR1_LPR
     // State Transitions (see 5.3 Low-power modes, Fig. 13):
     //  * (opt): Low Power Run (LPR) Mode -> Run Mode
     //  * Run Mode -> Sleep
@@ -147,21 +127,12 @@ void hal_sleep(void)
     //  * (opt): Run Mode -> Low Power Run Mode
 
     // [5.4.1 Power control register 1 (PWR_CR1)]
-    // 	LPR: When this bit is set, the regulator is switched from main mode (MR) to low-power mode (LPR).
+    // LPR: When this bit is set, the regulator is switched from main mode (MR) to low-power mode (LPR).
     int lowPowerMode = PWR->CR1 & PWR_CR1_LPR;
-
-    // LPR -> Run
     if (lowPowerMode) {
-        HAL_PWREx_DisableLowPowerRunMode();
-    }
-
-    // Entering Sleep mode [5.3.4 Sleep mode]
-    CLEAR_BIT(SCB->SCR, ((uint32_t)SCB_SCR_SLEEPDEEP_Msk)); // SLEEPDEEP = 0
-    __WFI();
-
-    // Run -> LPR
-    if (lowPowerMode) {
-        HAL_PWREx_EnableLowPowerRunMode();
+        HAL_PWR_EnterSLEEPMode(PWR_LOWPOWERREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+    } else {
+        HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
     }
 #else
     HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
@@ -171,15 +142,28 @@ void hal_sleep(void)
     core_util_critical_section_exit();
 }
 
+extern int serial_is_tx_ongoing(void);
+extern int mbed_sdk_inited;
+
 void hal_deepsleep(void)
 {
+    /*  WORKAROUND:
+     *  MBED serial driver does not handle deepsleep lock
+     *  to prevent entering deepsleep until HW serial FIFO is empty.
+     *  This is tracked in mbed issue 4408.
+     *  For now, we're checking all Serial HW FIFO. If any transfer is ongoing
+     *  we're not entering deep sleep and returning immediately. */
+    if (serial_is_tx_ongoing()) {
+        return;
+    }
+
     // Disable IRQs
     core_util_critical_section_enter();
 
-    uint32_t EnterTimeUS = us_ticker_read();
+    save_timer_ctx();
 
     // Request to enter STOP mode with regulator in low power mode
-#if TARGET_STM32L4
+#ifdef PWR_CR1_LPMS_STOP2 /* STM32L4 */
     int pwrClockEnabled = __HAL_RCC_PWR_IS_CLK_ENABLED();
     int lowPowerModeEnabled = PWR->CR1 & PWR_CR1_LPR;
 
@@ -198,11 +182,21 @@ void hal_deepsleep(void)
     if (!pwrClockEnabled) {
         __HAL_RCC_PWR_CLK_DISABLE();
     }
-#else /* TARGET_STM32L4 */
+#else /* PWR_CR1_LPMS_STOP2 */
     HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
-#endif /* TARGET_STM32L4 */
-    // Verify Clock Out of Deep Sleep
-    ForceClockOutofDeepSleep();
+#endif /* PWR_CR1_LPMS_STOP2 */
+
+    /* Prevent HAL_GetTick() from using ticker_read_us() to read the
+     * us_ticker timestamp until the us_ticker context is restored. */
+    mbed_sdk_inited = 0;
+
+    /* We've seen unstable PLL CLK configuration when DEEP SLEEP exits just few Âµs after being entered
+    *  So we need to force clock init out of Deep Sleep.
+    *  This init has been split into 2 separate functions so that the involved structures are not allocated on the stack in parallel.
+    *  This will reduce the maximum stack usage in case on non-optimized / debug compilers settings
+    */
+    ForceOscOutofDeepSleep();
+    ForcePeriphOutofDeepSleep();
 
     // After wake-up from STOP reconfigure the PLL
     SetSysClock();
@@ -213,22 +207,14 @@ void hal_deepsleep(void)
      *  deep sleep */
     wait_loop(500);
 
-    TIM_HandleTypeDef TimMasterHandle;
-    TimMasterHandle.Instance = TIM_MST;
-    __HAL_TIM_SET_COUNTER(&TimMasterHandle, EnterTimeUS);
+    restore_timer_ctx();
 
-#if DEVICE_RTC
-    /* Wait for RTC RSF bit synchro if RTC is configured */
-#if (TARGET_STM32F2) || (TARGET_STM32F4) || (TARGET_STM32F7)
-    if (READ_BIT(RCC->BDCR, RCC_BDCR_RTCSEL)) {
-#else /* (TARGET_STM32F2) || (TARGET_STM32F4) || (TARGET_STM32F7) */
-    if (__HAL_RCC_GET_RTC_SOURCE()) {
-#endif  /* (TARGET_STM32F2) || (TARGET_STM32F4) || (TARGET_STM32F7) */
-        rtc_synchronize();
-    }
-#endif
+    /* us_ticker context restored, allow HAL_GetTick() to read the us_ticker
+     * timestamp via ticker_read_us() again. */
+    mbed_sdk_inited = 1;
+
     // Enable IRQs
-   core_util_critical_section_exit();
+    core_util_critical_section_exit();
 }
 
 #endif

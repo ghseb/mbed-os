@@ -134,7 +134,7 @@ int32_t flash_program_page(flash_t *obj, uint32_t address, const uint8_t *data, 
         }
     } else { /*  case where data is aligned, so let's avoid any copy */
         while ((address < (StartAddress + size)) && (status == 0)) {
-            if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, address, *((uint32_t*) data)) == HAL_OK) {
+            if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, address, *((uint32_t *) data)) == HAL_OK) {
                 address = address + MIN_PROG_SIZE;
                 data = data + MIN_PROG_SIZE;
             } else {
@@ -170,6 +170,13 @@ uint32_t flash_get_start_address(const flash_t *obj)
 uint32_t flash_get_size(const flash_t *obj)
 {
     return FLASH_SIZE;
+}
+
+uint8_t flash_get_erase_value(const flash_t *obj)
+{
+    (void)obj;
+
+    return 0xFF;
 }
 
 #endif

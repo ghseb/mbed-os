@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2017 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,14 +31,14 @@
  * mbed_main(), it is not meant for user code, but for the SDK itself to perform
  * initializations before main() is called.
  */
-MBED_WEAK void mbed_main(void) 
+MBED_WEAK void mbed_main(void)
 {
 
 }
 
 /* This function can be implemented by the target to perform higher level target initialization
  */
-MBED_WEAK void mbed_sdk_init(void) 
+MBED_WEAK void mbed_sdk_init(void)
 {
 
 }
@@ -56,7 +57,7 @@ void mbed_copy_nvic(void)
 #if !defined(__CORTEX_M0) && !defined(__CORTEX_A9)
 #ifdef NVIC_RAM_VECTOR_ADDRESS
     uint32_t *old_vectors = (uint32_t *)SCB->VTOR;
-    uint32_t *vectors = (uint32_t*)NVIC_RAM_VECTOR_ADDRESS;
+    uint32_t *vectors = (uint32_t *)NVIC_RAM_VECTOR_ADDRESS;
     for (int i = 0; i < NVIC_NUM_VECTORS; i++) {
         vectors[i] = old_vectors[i];
     }
@@ -71,19 +72,19 @@ void mbed_copy_nvic(void)
 
 int $Super$$main(void);
 
-int $Sub$$main(void) 
+int $Sub$$main(void)
 {
     mbed_main();
     return $Super$$main();
 }
 
-void _platform_post_stackheap_init(void) 
+void _platform_post_stackheap_init(void)
 {
     mbed_copy_nvic();
     mbed_sdk_init();
 }
 
-#elif defined (__GNUC__) 
+#elif defined (__GNUC__)
 
 extern int __real_main(void);
 
@@ -95,7 +96,7 @@ void software_init_hook(void)
 }
 
 
-int __wrap_main(void) 
+int __wrap_main(void)
 {
     mbed_main();
     return __real_main();
@@ -105,8 +106,8 @@ int __wrap_main(void)
 
 int __low_level_init(void)
 {
-  mbed_copy_nvic();
-  return 1;
+    mbed_copy_nvic();
+    return 1;
 }
 
 #endif

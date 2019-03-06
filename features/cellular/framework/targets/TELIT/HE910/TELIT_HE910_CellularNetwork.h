@@ -22,18 +22,13 @@
 
 namespace mbed {
 
-class TELIT_HE910_CellularNetwork : public AT_CellularNetwork
-{
+class TELIT_HE910_CellularNetwork : public AT_CellularNetwork {
 public:
     TELIT_HE910_CellularNetwork(ATHandler &atHandler);
     virtual ~TELIT_HE910_CellularNetwork();
 
 protected:
-
-    virtual bool get_modem_stack_type(nsapi_ip_stack_t requested_stack);
-
-    virtual bool has_registration(RegistrationType rat);
-
+    virtual RegistrationMode has_registration(RegistrationType rat);
     virtual nsapi_error_t set_access_technology_impl(RadioAccessTechnology opRat);
 };
 

@@ -29,7 +29,7 @@
   */
 
 #include "stm32l0xx.h"
-#include "mbed_assert.h"
+#include "mbed_error.h"
 
 /*!< Uncomment the following line if you need to relocate your vector Table in
      Internal SRAM. */
@@ -58,7 +58,7 @@ uint8_t SetSysClock_PLL_HSI(void);
   * @param  None
   * @retval None
   */
-void SystemInit (void)
+void SystemInit(void)
 {
     /*!< Set MSION bit */
     RCC->CR |= (uint32_t)0x00000100U;
@@ -115,8 +115,8 @@ void SetSysClock(void)
             if (SetSysClock_PLL_HSI() == 0)
 #endif
             {
-                while(1) {
-                    MBED_ASSERT(1);
+                {
+                    error("SetSysClock failed\n");
                 }
             }
         }
@@ -170,7 +170,7 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     if (HAL_RCCEx_PeriphCLKConfig(&RCC_PeriphClkInit) != HAL_OK) {
         return 0; // FAIL
     }
-    
+
     /* Select PLL as system clock source and configure the HCLK, PCLK1 and PCLK2 clocks dividers */
     RCC_ClkInitStruct.ClockType      = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2);
     RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK; // 32 MHz
@@ -200,8 +200,7 @@ uint8_t SetSysClock_PLL_HSE(uint8_t bypass)
     // Output clock on MCO1 pin(PA8) for debugging purpose
     if (bypass == 0) { // Xtal used
         HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_SYSCLK, RCC_MCODIV_2); // 16 MHz
-    }
-    else { // External clock used
+    } else { // External clock used
         HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_SYSCLK, RCC_MCODIV_4); // 8 MHz
     }
 #endif

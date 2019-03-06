@@ -17,7 +17,6 @@
 
 #include "greentea-client/test_env.h"
 #include "mbed.h"
-#include MBED_CONF_APP_HEADER_FILE
 #include "tcp_tests.h"
 #include "TCPSocket.h"
 #include "unity/unity.h"
@@ -25,12 +24,11 @@
 
 using namespace utest::v1;
 
-namespace
-{
-    typedef struct TCPSocketItem {
-        TCPSocket *sock;
-        TCPSocketItem *next;
-    } SocketItem;
+namespace {
+typedef struct TCPSocketItem {
+    TCPSocket *sock;
+    TCPSocketItem *next;
+} SocketItem;
 }
 
 void TCPSOCKET_OPEN_LIMIT()
@@ -48,7 +46,7 @@ void TCPSOCKET_OPEN_LIMIT()
             if (!sock) {
                 break;
             }
-            ret = sock->open(get_interface());
+            ret = sock->open(NetworkInterface::get_default_instance());
             if (ret == NSAPI_ERROR_NO_MEMORY || ret == NSAPI_ERROR_NO_SOCKET) {
                 printf("[round#%02d] unable to open new socket, error: %d\n", i, ret);
                 delete sock;
@@ -72,8 +70,19 @@ void TCPSOCKET_OPEN_LIMIT()
             break;
         }
 
+#if MBED_CONF_NSAPI_SOCKET_STATS_ENABLE
+        int count = fetch_stats();
+        int open_count = 0;
+        for (int j = 0; j < count; j++) {
+            if ((tcp_stats[j].state == SOCK_OPEN) && (tcp_stats[j].proto == NSAPI_TCP)) {
+                open_count++;
+            }
+        }
+        TEST_ASSERT(open_count >= 4);
+#endif
+
         TCPSocketItem *tmp;
-        for(TCPSocketItem *it = socket_list_head; it;) {
+        for (TCPSocketItem *it = socket_list_head; it;) {
             ++open_sockets[i];
             tmp = it;
             it = it->next;

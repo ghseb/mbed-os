@@ -16,7 +16,6 @@
  */
 
 #include "mbed.h"
-#include MBED_CONF_APP_HEADER_FILE
 #include "UDPSocket.h"
 #include "greentea-client/test_env.h"
 #include "unity/unity.h"
@@ -25,42 +24,50 @@
 
 using namespace utest::v1;
 
-namespace
-{
-    static const int SIGNAL_SIGIO = 0x1;
-    static const int SIGIO_TIMEOUT = 5000; //[ms]
-    static const int WAIT2RECV_TIMEOUT = 1000; //[ms]
-    static const int RETRIES = 2;
+namespace {
+static const int SIGNAL_SIGIO = 0x1;
+static const int SIGIO_TIMEOUT = 5000; //[ms]
+static const int WAIT2RECV_TIMEOUT = 1000; //[ms]
+static const int RETRIES = 2;
 
-    UDPSocket sock;
-    Semaphore tx_sem(0, 1);
+static const double EXPECTED_LOSS_RATIO = 0.0;
+static const double TOLERATED_LOSS_RATIO = 0.3;
 
-    static const int BUFF_SIZE = 1200;
-    char rx_buffer[BUFF_SIZE] = {0};
-    char tx_buffer[BUFF_SIZE] = {0};
+UDPSocket sock;
+Semaphore tx_sem(0, 1);
 
-    static const int PKTS = 22;
-    static const int pkt_sizes[PKTS] = {1,2,3,4,5,6,7,8,9,10, \
-                                        100,200,300,400,500,600,700,800,900,1000,\
-                                        1100,1200};
+static const int BUFF_SIZE = 1200;
+char rx_buffer[BUFF_SIZE] = {0};
+char tx_buffer[BUFF_SIZE] = {0};
+
+static const int PKTS = 22;
+static const int pkt_sizes[PKTS] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, \
+                                    100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, \
+                                    1100, 1200
+                                   };
+Timer tc_exec_time;
+int time_allotted;
 }
 
-static void _sigio_handler(osThreadId id) {
+static void _sigio_handler(osThreadId id)
+{
     osSignalSet(id, SIGNAL_SIGIO);
 }
 
 void UDPSOCKET_ECHOTEST()
 {
     SocketAddress udp_addr;
-    get_interface()->gethostbyname(MBED_CONF_APP_ECHO_SERVER_ADDR, &udp_addr);
+    NetworkInterface::get_default_instance()->gethostbyname(MBED_CONF_APP_ECHO_SERVER_ADDR, &udp_addr);
     udp_addr.set_port(MBED_CONF_APP_ECHO_SERVER_PORT);
 
     UDPSocket sock;
-    TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.open(get_interface()));
+    TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.open(NetworkInterface::get_default_instance()));
 
     int recvd;
     int sent;
     int s_idx = 0;
+    int packets_sent = 0;
+    int packets_recv = 0;
     for (int pkt_s = pkt_sizes[s_idx]; s_idx < PKTS; pkt_s = ++s_idx) {
         pkt_s = pkt_sizes[s_idx];
 
@@ -69,6 +76,9 @@ void UDPSOCKET_ECHOTEST()
         for (int retry_cnt = 0; retry_cnt <= 2; retry_cnt++) {
             memset(rx_buffer, 0, BUFF_SIZE);
             sent = sock.sendto(udp_addr, tx_buffer, pkt_s);
+            if (sent > 0) {
+                packets_sent++;
+            }
             if (sent != pkt_s) {
                 printf("[Round#%02d - Sender] error, returned %d\n", s_idx, sent);
                 continue;
@@ -78,44 +88,70 @@ void UDPSOCKET_ECHOTEST()
                 break;
             }
         }
-        TEST_ASSERT_EQUAL(0, memcmp(tx_buffer, rx_buffer, pkt_s));
+        if (memcmp(tx_buffer, rx_buffer, pkt_s) == 0) {
+            packets_recv++;
+        }
+    }
+    // Packet loss up to 30% tolerated
+    if (packets_sent > 0) {
+        double loss_ratio = 1 - ((double)packets_recv / (double)packets_sent);
+        printf("Packets sent: %d, packets received %d, loss ratio %.2lf\r\n", packets_sent, packets_recv, loss_ratio);
+        TEST_ASSERT_DOUBLE_WITHIN(TOLERATED_LOSS_RATIO, EXPECTED_LOSS_RATIO, loss_ratio);
     }
     TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.close());
 }
 
 void udpsocket_echotest_nonblock_receiver(void *receive_bytes)
 {
-    int expt2recv = *(int*)receive_bytes;
+    int expt2recv = *(int *)receive_bytes;
     int recvd;
     for (int retry_cnt = 0; retry_cnt <= RETRIES; retry_cnt++) {
         recvd = sock.recvfrom(NULL, rx_buffer, expt2recv);
         if (recvd == NSAPI_ERROR_WOULD_BLOCK) {
+            if (tc_exec_time.read() >= time_allotted) {
+                break;
+            }
             wait_ms(WAIT2RECV_TIMEOUT);
             --retry_cnt;
             continue;
+        } else if (recvd < 0) {
+            printf("sock.recvfrom returned %d\n", recvd);
+            TEST_FAIL();
+            break;
         } else if (recvd == expt2recv) {
             break;
         }
     }
 
-    TEST_ASSERT_EQUAL(0, memcmp(tx_buffer, rx_buffer, expt2recv));
-    drop_bad_packets(sock, -1); // timeout equivalent to set_blocking(false)
+    drop_bad_packets(sock, 0); // timeout equivalent to set_blocking(false)
 
     tx_sem.release();
 }
 
 void UDPSOCKET_ECHOTEST_NONBLOCK()
 {
+#if MBED_CONF_NSAPI_SOCKET_STATS_ENABLE
+    int j = 0;
+    int count = fetch_stats();
+    for (; j < count; j++) {
+        TEST_ASSERT_EQUAL(SOCK_CLOSED, udp_stats[j].state);
+    }
+#endif
+    tc_exec_time.start();
+    time_allotted = split2half_rmng_udp_test_time(); // [s]
+
     SocketAddress udp_addr;
-    get_interface()->gethostbyname(MBED_CONF_APP_ECHO_SERVER_ADDR, &udp_addr);
+    NetworkInterface::get_default_instance()->gethostbyname(MBED_CONF_APP_ECHO_SERVER_ADDR, &udp_addr);
     udp_addr.set_port(MBED_CONF_APP_ECHO_SERVER_PORT);
 
-    TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.open(get_interface()));
+    TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.open(NetworkInterface::get_default_instance()));
     sock.set_blocking(false);
-    sock.sigio(callback(_sigio_handler, Thread::gettid()));
+    sock.sigio(callback(_sigio_handler, ThisThread::get_id()));
 
     int sent;
     int s_idx = 0;
+    int packets_sent = 0;
+    int packets_recv = 0;
     Thread *thread;
     unsigned char *stack_mem = (unsigned char *)malloc(OS_STACK_SIZE);
     TEST_ASSERT_NOT_NULL(stack_mem);
@@ -133,8 +169,12 @@ void UDPSOCKET_ECHOTEST_NONBLOCK()
             fill_tx_buffer_ascii(tx_buffer, pkt_s);
 
             sent = sock.sendto(udp_addr, tx_buffer, pkt_s);
+            if (sent > 0) {
+                packets_sent++;
+            }
             if (sent == NSAPI_ERROR_WOULD_BLOCK) {
-                if (osSignalWait(SIGNAL_SIGIO, SIGIO_TIMEOUT).status == osEventTimeout) {
+                if (tc_exec_time.read() >= time_allotted ||
+                        osSignalWait(SIGNAL_SIGIO, SIGIO_TIMEOUT).status == osEventTimeout) {
                     continue;
                 }
                 --retry_cnt;
@@ -142,14 +182,40 @@ void UDPSOCKET_ECHOTEST_NONBLOCK()
                 printf("[Round#%02d - Sender] error, returned %d\n", s_idx, sent);
                 continue;
             }
-            if (tx_sem.wait(WAIT2RECV_TIMEOUT*2) == 0) { // RX might wait up to WAIT2RECV_TIMEOUT before recvfrom
+            if (tx_sem.wait(WAIT2RECV_TIMEOUT * 2) == 0) { // RX might wait up to WAIT2RECV_TIMEOUT before recvfrom
                 continue;
             }
             break;
         }
         thread->join();
         delete thread;
+        if (memcmp(tx_buffer, rx_buffer, pkt_s) == 0) {
+            packets_recv++;
+        }
     }
     free(stack_mem);
+
+    // Packet loss up to 30% tolerated
+    if (packets_sent > 0) {
+        double loss_ratio = 1 - ((double)packets_recv / (double)packets_sent);
+        printf("Packets sent: %d, packets received %d, loss ratio %.2lf\r\n", packets_sent, packets_recv, loss_ratio);
+        TEST_ASSERT_DOUBLE_WITHIN(TOLERATED_LOSS_RATIO, EXPECTED_LOSS_RATIO, loss_ratio);
+
+#if MBED_CONF_NSAPI_SOCKET_STATS_ENABLE
+        count = fetch_stats();
+        for (j = 0; j < count; j++) {
+            if ((NSAPI_UDP == udp_stats[j].proto) && (SOCK_OPEN == udp_stats[j].state)) {
+                TEST_ASSERT(udp_stats[j].sent_bytes != 0);
+                TEST_ASSERT(udp_stats[j].recv_bytes != 0);
+                break;
+            }
+        }
+        loss_ratio = 1 - ((double)udp_stats[j].recv_bytes / (double)udp_stats[j].sent_bytes);
+        printf("Bytes sent: %d, bytes received %d, loss ratio %.2lf\r\n", udp_stats[j].sent_bytes, udp_stats[j].recv_bytes, loss_ratio);
+        TEST_ASSERT_DOUBLE_WITHIN(TOLERATED_LOSS_RATIO, EXPECTED_LOSS_RATIO, loss_ratio);
+
+#endif
+    }
     TEST_ASSERT_EQUAL(NSAPI_ERROR_OK, sock.close());
+    tc_exec_time.stop();
 }

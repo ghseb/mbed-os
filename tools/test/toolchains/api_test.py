@@ -1,22 +1,128 @@
-"""Tests for the toolchain sub-system"""
+"""
+Copyright (c) 2017-2019 ARM Limited. All rights reserved.
+
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations 
+"""
+
 import sys
 import os
 from string import printable
 from copy import deepcopy
 from mock import MagicMock, patch
-from hypothesis import given, settings
+from hypothesis import given, settings, HealthCheck
 from hypothesis.strategies import text, lists, fixed_dictionaries, booleans
+
+"""Tests for the toolchain sub-system"""
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
                                     ".."))
 sys.path.insert(0, ROOT)
 
-from tools.toolchains import TOOLCHAIN_CLASSES, LEGACY_TOOLCHAIN_NAMES,\
-    Resources, TOOLCHAIN_PATHS, mbedToolchain
-from tools.targets import TARGET_MAP
+from tools.toolchains import (
+    TOOLCHAIN_CLASSES,
+    TOOLCHAIN_PATHS,
+    mbedToolchain,
+)
+from tools.resources import LEGACY_TOOLCHAIN_NAMES, Resources, FileType
+from tools.targets import TARGET_MAP, set_targets_json_location
 from tools.notifier.mock import MockNotifier
 
 ALPHABET = [char for char in printable if char not in [u'.', u'/', u'\\']]
+
+
+@patch('tools.toolchains.arm.run_cmd')
+def test_arm_version_check(_run_cmd):
+    set_targets_json_location()
+    _run_cmd.return_value = ("""
+    Product: ARM Compiler 5.06
+    Component: ARM Compiler 5.06 update 5 (build 528)
+    Tool: armcc [4d3621]
+    """, "", 0)
+    notifier = MockNotifier()
+    toolchain = TOOLCHAIN_CLASSES["ARM"](TARGET_MAP["K64F"], notify=notifier)
+    toolchain.version_check()
+    assert notifier.messages == []
+    _run_cmd.return_value = ("""
+    Product: MDK Professional 5.22
+    Component: ARM Compiler 5.06 update 5 (build 528)
+    Tool: armcc [4d3621]
+    """, "", 0)
+    toolchain.version_check()
+    assert notifier.messages == []
+    _run_cmd.return_value = ("""
+    Product: ARM Compiler
+    Component: ARM Compiler
+    Tool: armcc [4d3621]
+    """, "", 0)
+    toolchain.version_check()
+    assert len(notifier.messages) == 1
+
+
+@patch('tools.toolchains.iar.run_cmd')
+def test_iar_version_check(_run_cmd):
+    set_targets_json_location()
+    _run_cmd.return_value = ("""
+    IAR ANSI C/C++ Compiler V7.80.1.28/LNX for ARM
+    """, "", 0)
+    notifier = MockNotifier()
+    toolchain = TOOLCHAIN_CLASSES["IAR"](TARGET_MAP["K64F"], notify=notifier)
+    toolchain.version_check()
+    assert notifier.messages == []
+    _run_cmd.return_value = ("""
+    IAR ANSI C/C++ Compiler V/LNX for ARM
+    """, "", 0)
+    toolchain.version_check()
+    assert len(notifier.messages) == 1
+    _run_cmd.return_value = ("""
+    IAR ANSI C/C++ Compiler V/8.80LNX for ARM
+    """, "", 0)
+    toolchain.version_check()
+    assert len(notifier.messages) == 2
+
+
+@patch('tools.toolchains.gcc.run_cmd')
+def test_gcc_version_check(_run_cmd):
+    set_targets_json_location()
+    _run_cmd.return_value = ("""
+    arm-none-eabi-gcc (Arch Repository) 6.4.4
+    Copyright (C) 2018 Free Software Foundation, Inc.
+    This is free software; see the source for copying conditions.  There is NO
+    warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    """, "", 0)
+    notifier = MockNotifier()
+    toolchain = TOOLCHAIN_CLASSES["GCC_ARM"](
+        TARGET_MAP["K64F"], notify=notifier)
+    toolchain.version_check()
+    assert notifier.messages == []
+    _run_cmd.return_value = ("""
+    arm-none-eabi-gcc (Arch Repository) 8.1.0
+    Copyright (C) 2018 Free Software Foundation, Inc.
+    This is free software; see the source for copying conditions.  There is NO
+    warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    """, "", 0)
+    toolchain.version_check()
+    assert len(notifier.messages) == 1
+    _run_cmd.return_value = ("""
+    arm-none-eabi-gcc (Arch Repository)
+    Copyright (C) 2018 Free Software Foundation, Inc.
+    This is free software; see the source for copying conditions.  There is NO
+    warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+    """, "", 0)
+    toolchain.version_check()
+    assert len(notifier.messages) == 2
+
 
 @given(fixed_dictionaries({
     'common': lists(text()),
@@ -25,12 +131,14 @@ ALPHABET = [char for char in printable if char not in [u'.', u'/', u'\\']]
     'asm': lists(text()),
     'ld': lists(text())}),
        lists(text(min_size=1, alphabet=ALPHABET), min_size=1))
+@settings(suppress_health_check=[HealthCheck.too_slow])
 def test_toolchain_profile_c(profile, source_file):
     """Test that the appropriate profile parameters are passed to the
     C compiler"""
     filename = deepcopy(source_file)
     filename[-1] += ".c"
     to_compile = os.path.join(*filename)
+    set_targets_json_location()
     with patch('os.mkdir') as _mkdir:
         for _, tc_class in TOOLCHAIN_CLASSES.items():
             toolchain = tc_class(TARGET_MAP["K64F"], build_profile=profile,
@@ -56,6 +164,7 @@ def test_toolchain_profile_c(profile, source_file):
     'asm': lists(text()),
     'ld': lists(text())}),
        lists(text(min_size=1, alphabet=ALPHABET), min_size=1))
+@settings(suppress_health_check=[HealthCheck.too_slow])
 def test_toolchain_profile_cpp(profile, source_file):
     """Test that the appropriate profile parameters are passed to the
     C++ compiler"""
@@ -87,6 +196,7 @@ def test_toolchain_profile_cpp(profile, source_file):
     'asm': lists(text()),
     'ld': lists(text())}),
        lists(text(min_size=1, alphabet=ALPHABET), min_size=1))
+@settings(suppress_health_check=[HealthCheck.too_slow])
 def test_toolchain_profile_asm(profile, source_file):
     """Test that the appropriate profile parameters are passed to the
     Assembler"""
@@ -96,9 +206,11 @@ def test_toolchain_profile_asm(profile, source_file):
     with patch('os.mkdir') as _mkdir:
         for _, tc_class in TOOLCHAIN_CLASSES.items():
             toolchain = tc_class(TARGET_MAP["K64F"], build_profile=profile,
-                                 notify=MockNotifier)
+                                 notify=MockNotifier())
             toolchain.inc_md5 = ""
             toolchain.build_dir = ""
+            toolchain.config = MagicMock()
+            toolchain.config.get_config_data_macros.return_value = []
             for parameter in profile['asm']:
                 assert any(parameter in cmd for cmd in toolchain.asm), \
                     "Toolchain %s did not propagate arg %s" % (toolchain.name,
@@ -123,6 +235,7 @@ def test_toolchain_profile_asm(profile, source_file):
     'asm': lists(text()),
     'ld': lists(text(min_size=1))}),
        lists(text(min_size=1, alphabet=ALPHABET), min_size=1))
+@settings(suppress_health_check=[HealthCheck.too_slow])
 def test_toolchain_profile_ld(profile, source_file):
     """Test that the appropriate profile parameters are passed to the
     Linker"""
@@ -161,12 +274,11 @@ def test_detect_duplicates(filenames):
     s_sources = [os.path.join(name, "dupe.s") for name in filenames]
     cpp_sources = [os.path.join(name, "dupe.cpp") for name in filenames]
     notify = MockNotifier()
-    toolchain = TOOLCHAIN_CLASSES["ARM"](TARGET_MAP["K64F"], notify=notify)
-    res = Resources()
-    res.c_sources = c_sources
-    res.s_sources = s_sources
-    res.cpp_sources = cpp_sources
-    assert res.detect_duplicates(toolchain) == 1,\
+    res = Resources(notify)
+    res.add_files_to_type(FileType.C_SRC, c_sources)
+    res.add_files_to_type(FileType.ASM_SRC, s_sources)
+    res.add_files_to_type(FileType.CPP_SRC, cpp_sources)
+    assert res.detect_duplicates() == 1,\
         "Not Enough duplicates found"
 
     notification = notify.messages[0]

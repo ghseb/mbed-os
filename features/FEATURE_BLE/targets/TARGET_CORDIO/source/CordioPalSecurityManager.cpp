@@ -443,7 +443,7 @@ ble_error_t CordioSecurityManager::cancel_pairing(
 ble_error_t CordioSecurityManager::get_random_data(byte_array_t<8> &random_data)
 {
     SecRand(random_data.data(), random_data.size());
-    return BLE_ERROR_NOT_IMPLEMENTED;
+    return BLE_ERROR_NONE;
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -730,7 +730,7 @@ bool CordioSecurityManager::sm_handler(const wsfMsgHdr_t* msg) {
         case DM_SEC_ECC_KEY_IND: {
             secEccMsg_t* evt = (secEccMsg_t*) msg;
             DmSecSetEccKey(&evt->data.key);
-            memcpy(self._public_key_x, evt->data.key.pubKey_x, sizeof(_public_key_x));
+            memcpy(self._public_key_x, evt->data.key.pubKey_x, sizeof(self._public_key_x));
             self._lesc_keys_generated = true;
             return true;
         }

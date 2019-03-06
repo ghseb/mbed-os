@@ -1,5 +1,6 @@
 /* mbed Microcontroller Library
  * Copyright (c) 2017-2017 ARM Limited
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +19,40 @@
 #include <stdarg.h>
 #include "device.h"
 #include "platform/mbed_application.h"
+#include "platform/mbed_mpu_mgmt.h"
 
 #if MBED_APPLICATION_SUPPORT
+
+#if defined(__CORTEX_A9)
+
+static void powerdown_gic(void);
+
+void mbed_start_application(uintptr_t address)
+{
+    __disable_irq();
+    powerdown_gic();
+    __enable_irq();
+    ((void(*)())address)();
+}
+
+static void powerdown_gic()
+{
+    int i;
+    int j;
+
+    for (i = 0; i < 32; i++) {
+        GICDistributor->ICENABLER[i] = 0xFFFFFFFF;
+        GICDistributor->ICPENDR[i] = 0xFFFFFFFF;
+        if (i < 4) {
+            GICDistributor->CPENDSGIR[i] = 0xFFFFFFFF;
+        }
+        for (j = 0; j < 8; j++) {
+            GICDistributor->IPRIORITYR[i * 8 + j] = 0x00000000;
+        }
+    }
+}
+
+#else
 
 static void powerdown_nvic(void);
 static void powerdown_scb(uint32_t vtor);
@@ -36,9 +69,21 @@ void mbed_start_application(uintptr_t address)
     SysTick->CTRL = 0x00000000;
     powerdown_nvic();
     powerdown_scb(address);
+    mbed_mpu_manager_deinit();
 
-    sp = *((void**)address + 0);
-    pc = *((void**)address + 1);
+#ifdef MBED_DEBUG
+    // Configs to make debugging easier
+#ifdef SCnSCB_ACTLR_DISDEFWBUF_Msk
+    // Disable write buffer to make BusFaults (eg write to ROM via NULL pointer) precise.
+    // Possible on Cortex-M3 and M4, not on M0, M7 or M33.
+    // Would be less necessary if ROM was write-protected in MPU to give a
+    // precise MemManage exception.
+    SCnSCB->ACTLR |= SCnSCB_ACTLR_DISDEFWBUF_Msk;
+#endif
+#endif
+
+    sp = *((void **)address + 0);
+    pc = *((void **)address + 1);
     start_new_application(sp, pc);
 }
 
@@ -124,16 +169,16 @@ __asm static void start_new_application(void *sp, void *pc)
 
 void start_new_application(void *sp, void *pc)
 {
-    __asm volatile (
+    __asm volatile(
         "movw   r2, #0      \n" // Fail to compile "mov r2, #0" with ARMC6. Replace with MOVW.
-                                // We needn't "movt r2, #0" immediately following because MOVW
-                                // will zero-extend the 16-bit immediate.
+        // We needn't "movt r2, #0" immediately following because MOVW
+        // will zero-extend the 16-bit immediate.
         "msr    control, r2 \n" // Switch to main stack
         "mov    sp, %0      \n"
         "msr    primask, r2 \n" // Enable interrupts
         "bx     %1          \n"
         :
-        : "l" (sp), "l" (pc)
+        : "l"(sp), "l"(pc)
         : "r2", "cc", "memory"
     );
 }
@@ -141,6 +186,8 @@ void start_new_application(void *sp, void *pc)
 #else
 
 #error "Unsupported toolchain"
+
+#endif
 
 #endif
 

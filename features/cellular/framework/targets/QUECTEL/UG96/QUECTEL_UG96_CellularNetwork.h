@@ -22,20 +22,14 @@
 
 namespace mbed {
 
-class QUECTEL_UG96_CellularNetwork : public AT_CellularNetwork
-{
+class QUECTEL_UG96_CellularNetwork : public AT_CellularNetwork {
 public:
     QUECTEL_UG96_CellularNetwork(ATHandler &atHandler);
     virtual ~QUECTEL_UG96_CellularNetwork();
 
 protected:
-    virtual bool get_modem_stack_type(nsapi_ip_stack_t requested_stack);
-
-    virtual bool has_registration(RegistrationType rat);
-
+    virtual RegistrationMode has_registration(RegistrationType rat);
     virtual nsapi_error_t set_access_technology_impl(RadioAccessTechnology opRat);
-
-    virtual nsapi_error_t do_user_authentication();
 };
 
 } // namespace mbed

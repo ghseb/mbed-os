@@ -1,4 +1,21 @@
-"""Just a template for subclassing"""
+"""
+Copyright (c) 2016-2019 ARM Limited. All rights reserved.
+
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
 import os
 from abc import abstractmethod, ABCMeta
 import logging
@@ -9,7 +26,10 @@ from jinja2.environment import Environment
 import copy
 
 from tools.targets import TARGET_MAP
+from tools.utils import mkdir
+from tools.resources import FileType
 
+"""Just a template for subclassing"""
 
 class TargetNotSupportedException(Exception):
     """Indicates that an IDE does not support a particular MCU"""
@@ -86,12 +106,8 @@ class Exporter(object):
         return self.TOOLCHAIN
 
     def add_config(self):
-        """Add the containgin directory of mbed_config.h to include dirs"""
-        config = self.toolchain.get_config_header()
-        if config:
-            self.resources.inc_dirs.append(
-                dirname(relpath(config,
-                                self.resources.file_basepath[config])))
+        """Add the containing directory of mbed_config.h to include dirs"""
+        pass
 
     @property
     def flags(self):
@@ -103,9 +119,7 @@ class Exporter(object):
         asm_flags    - assembler flags
         common_flags - common options
         """
-        config_header = self.toolchain.get_config_header()
-        flags = {key + "_flags": copy.deepcopy(value) for key, value
-                 in self.toolchain.flags.items()}
+        flags = self.toolchain_flags(self.toolchain)
         asm_defines = self.toolchain.get_compile_options(
             self.toolchain.get_symbols(for_asm=True),
             filter(None, self.resources.inc_dirs),
@@ -114,13 +128,60 @@ class Exporter(object):
         flags['asm_flags'] += asm_defines
         flags['c_flags'] += c_defines
         flags['cxx_flags'] += c_defines
+        config_header = self.config_header_ref
         if config_header:
-            config_header = relpath(config_header,
-                                    self.resources.file_basepath[config_header])
-            flags['c_flags'] += self.toolchain.get_config_option(config_header)
-            flags['cxx_flags'] += self.toolchain.get_config_option(
-                config_header)
+            config_option = self.toolchain.get_config_option(
+                config_header.name)
+            flags['c_flags'] += config_option
+            flags['cxx_flags'] += config_option
         return flags
+
+    @property
+    def libraries(self):
+        return [l for l in self.resources.get_file_names(FileType.LIB)
+                if l.endswith(self.toolchain.LIBRARY_EXT)]
+
+    @property
+    def hex_files(self):
+        """Returns a list of hex files to include in the exported project"""
+        hex_files = self.resources.hex_files
+        if hasattr(self.toolchain.target, 'hex_filename'):
+            hex_filename = self.toolchain.target.hex_filename
+            hex_files = [f for f in hex_files if basename(f) == hex_filename]
+        return hex_files
+
+    def toolchain_flags(self, toolchain):
+        """Returns a dictionary of toolchain flags.
+        Keys of the dictionary are:
+        cxx_flags    - c++ flags
+        c_flags      - c flags
+        ld_flags     - linker flags
+        asm_flags    - assembler flags
+        common_flags - common options
+
+        The difference from the above is that it takes a parameter.
+        """
+        flags = {key + "_flags": copy.deepcopy(value) for key, value
+                 in toolchain.flags.items()}
+        config_header = self.config_header_ref
+        if config_header:
+            header_options = self.toolchain.get_config_option(
+                config_header.name)
+            flags['c_flags'] += header_options
+            flags['cxx_flags'] += header_options
+        return flags
+
+    @property
+    def config_header_ref(self):
+        config_header = self.toolchain.get_config_header()
+        if config_header:
+            def is_config_header(f):
+                return f.path == config_header
+            return list(filter(
+                is_config_header, self.resources.get_file_refs(FileType.HEADER)
+            ))[0]
+        else:
+            return None
 
     def get_source_paths(self):
         """Returns a list of the directories where source files are contained"""
@@ -139,6 +200,7 @@ class Exporter(object):
         """Generates a project file from a template using jinja"""
         target_text = self._gen_file_inner(template_file, data, target_file, **kwargs)
         target_path = self.gen_file_dest(target_file)
+        mkdir(dirname(target_path))
         logging.debug("Generating: %s", target_path)
         open(target_path, "w").write(target_text)
         self.generated_files += [target_path]
@@ -179,8 +241,7 @@ class Exporter(object):
         Positional Arguments:
         src - the src's location
         """
-        rel_path = relpath(src, self.resources.file_basepath[src])
-        path_list = os.path.normpath(rel_path).split(os.sep)
+        path_list = os.path.normpath(src).split(os.sep)
         assert len(path_list) >= 1
         if len(path_list) == 1:
             key = self.project_name

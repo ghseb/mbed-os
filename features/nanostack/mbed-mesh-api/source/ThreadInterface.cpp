@@ -1,3 +1,19 @@
+/*
+ * Copyright (c) 2018 ARM Limited. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ * Licensed under the Apache License, Version 2.0 (the License); you may
+ * not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an AS IS BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include "ThreadInterface.h"
 #include "include/thread_tasklet.h"
 #include "callback_handler.h"
@@ -7,8 +23,7 @@
 #include "ns_trace.h"
 #define TRACE_GROUP "nsth"
 
-class Nanostack::ThreadInterface : public Nanostack::MeshInterface
-{
+class Nanostack::ThreadInterface : public Nanostack::MeshInterface {
 public:
     virtual nsapi_error_t bringup(bool dhcp, const char *ip,
                                   const char *netmask, const char *gw,
@@ -18,7 +33,7 @@ public:
     friend Nanostack;
     friend class ::ThreadInterface;
 private:
-    ThreadInterface(NanostackRfPhy &phy) : MeshInterface(phy), user_eui64_set(false) { }
+    ThreadInterface(NanostackRfPhy &phy) : MeshInterface(phy), eui64_set(false) { }
 
     /*
      * \brief Initialization of the interface.
@@ -53,6 +68,11 @@ private:
     void device_eui64_set(const uint8_t *eui64);
 
     /**
+     * \brief Reads the eui64 from the device configuration.
+     * */
+    void device_eui64_get(uint8_t *eui64);
+
+    /**
      * \brief sets the PSKd for the device configuration.
      * The default value is overwritten, which is defined in the mbed_lib.json file in the mesh-api
      * The value must be set before calling the connect function.
@@ -63,25 +83,24 @@ private:
 
     mesh_error_t device_pskd_set(const char *pskd);
 
-    bool user_eui64_set;
+    bool eui64_set;
 };
 
 Nanostack::ThreadInterface *ThreadInterface::get_interface() const
 {
-    return static_cast<Nanostack::ThreadInterface*>(_interface);
+    return static_cast<Nanostack::ThreadInterface *>(_interface);
 }
 
-int ThreadInterface::connect()
+nsapi_error_t ThreadInterface::do_initialize()
 {
     if (!_interface) {
-        _interface = new (nothrow) Nanostack::ThreadInterface(*_phy);
+        _interface = new (std::nothrow) Nanostack::ThreadInterface(*_phy);
         if (!_interface) {
             return NSAPI_ERROR_NO_MEMORY;
         }
         _interface->attach(_connection_status_cb);
     }
-
-    return _interface->bringup(false, NULL, NULL, NULL, IPV6_STACK, _blocking);
+    return NSAPI_ERROR_OK;
 }
 
 nsapi_error_t Nanostack::ThreadInterface::bringup(bool dhcp, const char *ip,
@@ -141,11 +160,6 @@ nsapi_error_t Nanostack::ThreadInterface::bringup(bool dhcp, const char *ip,
     return 0;
 }
 
-int ThreadInterface::disconnect()
-{
-    return _interface->bringdown();
-}
-
 nsapi_error_t Nanostack::ThreadInterface::bringdown()
 {
     nanostack_lock();
@@ -161,11 +175,7 @@ mesh_error_t Nanostack::ThreadInterface::init()
 {
     thread_tasklet_init();
     __mesh_handler_set_callback(this);
-    if (!user_eui64_set) {
-        uint8_t eui64[8];
-        get_phy().get_mac_address(eui64);
-        thread_tasklet_device_eui64_set(eui64);
-    }
+    device_eui64_get(NULL); // Ensure we've selected the EUI-64 - this does it
     interface_id = thread_tasklet_network_init(_device_id);
 
     if (interface_id == -2) {
@@ -216,10 +226,35 @@ void ThreadInterface::device_eui64_set(const uint8_t *eui64)
     get_interface()->device_eui64_set(eui64);
 }
 
+void ThreadInterface::device_eui64_get(uint8_t *eui64)
+{
+    memset(eui64, 0, 8);
+    if (!get_interface()) {
+        return;
+    }
+    get_interface()->device_eui64_get(eui64);
+}
+
 void Nanostack::ThreadInterface::device_eui64_set(const uint8_t *eui64)
 {
-    user_eui64_set = true;
+    eui64_set = true;
     thread_tasklet_device_eui64_set(eui64);
+}
+
+void Nanostack::ThreadInterface::device_eui64_get(uint8_t *eui64)
+{
+    if (!eui64_set) {
+        uint8_t eui64_buf[8];
+        if (register_phy() < 0) {
+            return;
+        }
+        get_phy().get_mac_address(eui64_buf);
+        device_eui64_set(eui64_buf);
+    }
+
+    if (eui64) {
+        thread_tasklet_device_eui64_get(eui64);
+    }
 }
 
 mesh_error_t ThreadInterface::device_pskd_set(const char *pskd)
@@ -234,10 +269,22 @@ mesh_error_t Nanostack::ThreadInterface::device_pskd_set(const char *pskd)
 
 #define THREAD 0x2345
 #if MBED_CONF_NSAPI_DEFAULT_MESH_TYPE == THREAD && DEVICE_802_15_4_PHY
+
 MBED_WEAK MeshInterface *MeshInterface::get_target_default_instance()
 {
-    static ThreadInterface thread(NanostackRfPhy::get_default_instance());
-
-    return thread;
+    static bool inited;
+    static ThreadInterface interface;
+    singleton_lock();
+    if (!inited) {
+        nsapi_error_t result = interface.initialize(&NanostackRfPhy::get_default_instance());
+        if (result != 0) {
+            tr_error("Thread initialize failed: %d", result);
+            singleton_unlock();
+            return NULL;
+        }
+        inited = true;
+    }
+    singleton_unlock();
+    return &interface;
 }
 #endif

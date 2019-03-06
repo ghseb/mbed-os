@@ -32,6 +32,11 @@
 
 #include "serial_api_hal.h"
 
+// Possible choices of the LPUART_CLOCK_SOURCE configuration set in json file
+#define USE_LPUART_CLK_LSE    0x01
+#define USE_LPUART_CLK_PCLK1  0x02
+#define USE_LPUART_CLK_HSI    0x04
+
 int stdio_uart_inited = 0; // used in platform/mbed_board.c and platform/mbed_retarget.cpp
 serial_t stdio_uart;
 
@@ -57,8 +62,7 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
 
     if ((tx == STDIO_UART_TX) || (rx == STDIO_UART_RX)) {
         stdio_config = 1;
-    }
-    else {
+    } else {
         if (uart_tx == pinmap_peripheral(STDIO_UART_TX, PinMap_UART_TX)) {
             error("Error: new serial object is using same UART as STDIO");
         }
@@ -67,120 +71,90 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
     // Reset and enable clock
 #if defined(USART1_BASE)
     if (obj_s->uart == UART_1) {
-        __HAL_RCC_USART1_FORCE_RESET();
-        __HAL_RCC_USART1_RELEASE_RESET();
         __HAL_RCC_USART1_CLK_ENABLE();
     }
 #endif
 
 #if defined (USART2_BASE)
     if (obj_s->uart == UART_2) {
-        __HAL_RCC_USART2_FORCE_RESET();
-        __HAL_RCC_USART2_RELEASE_RESET();
         __HAL_RCC_USART2_CLK_ENABLE();
     }
 #endif
 
 #if defined(USART3_BASE)
     if (obj_s->uart == UART_3) {
-        __HAL_RCC_USART3_FORCE_RESET();
-        __HAL_RCC_USART3_RELEASE_RESET();
         __HAL_RCC_USART3_CLK_ENABLE();
     }
 #endif
 
 #if defined(UART4_BASE)
     if (obj_s->uart == UART_4) {
-        __HAL_RCC_UART4_FORCE_RESET();
-        __HAL_RCC_UART4_RELEASE_RESET();
         __HAL_RCC_UART4_CLK_ENABLE();
     }
 #endif
 
 #if defined(USART4_BASE)
     if (obj_s->uart == UART_4) {
-        __HAL_RCC_USART4_FORCE_RESET();
-        __HAL_RCC_USART4_RELEASE_RESET();
         __HAL_RCC_USART4_CLK_ENABLE();
     }
 #endif
 
 #if defined(UART5_BASE)
     if (obj_s->uart == UART_5) {
-        __HAL_RCC_UART5_FORCE_RESET();
-        __HAL_RCC_UART5_RELEASE_RESET();
         __HAL_RCC_UART5_CLK_ENABLE();
     }
 #endif
 
 #if defined(USART5_BASE)
     if (obj_s->uart == UART_5) {
-        __HAL_RCC_USART5_FORCE_RESET();
-        __HAL_RCC_USART5_RELEASE_RESET();
         __HAL_RCC_USART5_CLK_ENABLE();
     }
 #endif
 
 #if defined(USART6_BASE)
     if (obj_s->uart == UART_6) {
-        __HAL_RCC_USART6_FORCE_RESET();
-        __HAL_RCC_USART6_RELEASE_RESET();
         __HAL_RCC_USART6_CLK_ENABLE();
     }
 #endif
 
 #if defined(UART7_BASE)
     if (obj_s->uart == UART_7) {
-        __HAL_RCC_UART7_FORCE_RESET();
-        __HAL_RCC_UART7_RELEASE_RESET();
         __HAL_RCC_UART7_CLK_ENABLE();
     }
 #endif
 
 #if defined(USART7_BASE)
     if (obj_s->uart == UART_7) {
-        __HAL_RCC_USART7_FORCE_RESET();
-        __HAL_RCC_USART7_RELEASE_RESET();
         __HAL_RCC_USART7_CLK_ENABLE();
     }
 #endif
 
 #if defined(UART8_BASE)
     if (obj_s->uart == UART_8) {
-        __HAL_RCC_UART8_FORCE_RESET();
-        __HAL_RCC_UART8_RELEASE_RESET();
         __HAL_RCC_UART8_CLK_ENABLE();
     }
 #endif
 
 #if defined(USART8_BASE)
     if (obj_s->uart == UART_8) {
-        __HAL_RCC_USART8_FORCE_RESET();
-        __HAL_RCC_USART8_RELEASE_RESET();
         __HAL_RCC_USART8_CLK_ENABLE();
     }
 #endif
 
 #if defined(UART9_BASE)
     if (obj_s->uart == UART_9) {
-        __HAL_RCC_UART9_FORCE_RESET();
-        __HAL_RCC_UART9_RELEASE_RESET();
         __HAL_RCC_UART9_CLK_ENABLE();
     }
 #endif
 
 #if defined(UART10_BASE)
     if (obj_s->uart == UART_10) {
-        __HAL_RCC_UART10_FORCE_RESET();
-        __HAL_RCC_UART10_RELEASE_RESET();
         __HAL_RCC_UART10_CLK_ENABLE();
     }
 #endif
 
 #if defined(LPUART1_BASE)
     if (obj_s->uart == LPUART_1) {
-        __HAL_RCC_LPUART1_FORCE_RESET();
-        __HAL_RCC_LPUART1_RELEASE_RESET();
         __HAL_RCC_LPUART1_CLK_ENABLE();
     }
 #endif
@@ -206,8 +180,7 @@ void serial_init(serial_t *obj, PinName tx, PinName rx)
 #if MBED_CONF_PLATFORM_STDIO_BAUD_RATE
         obj_s->baudrate = MBED_CONF_PLATFORM_STDIO_BAUD_RATE; // baudrate takes value from platform/mbed_lib.json
 #endif /* MBED_CONF_PLATFORM_STDIO_BAUD_RATE */
-    }
-    else {
+    } else {
 #if MBED_CONF_PLATFORM_DEFAULT_SERIAL_BAUD_RATE
         obj_s->baudrate = MBED_CONF_PLATFORM_DEFAULT_SERIAL_BAUD_RATE; // baudrate takes value from platform/mbed_lib.json
 #endif /* MBED_CONF_PLATFORM_DEFAULT_SERIAL_BAUD_RATE */
@@ -369,29 +342,64 @@ void serial_baud(serial_t *obj, int baudrate)
     struct serial_s *obj_s = SERIAL_S(obj);
 
     obj_s->baudrate = baudrate;
+
 #if defined(LPUART1_BASE)
-        /* Note that LPUART clock source must be in the range [3 x baud rate, 4096 x baud rate], check Ref Manual */
+    /* Note that LPUART clock source must be in the range [3 x baud rate, 4096 x baud rate], check Ref Manual */
     if (obj_s->uart == LPUART_1) {
-        /* If baudrate is lower than 9600 try to change to LSE */
         RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-        if (baudrate <= 9600 && __HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY)) {
-            PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LPUART1;
-            PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
-            HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
-        } else {
-            PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LPUART1;
-            PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
-            HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
-        }
-        if (init_uart(obj) == HAL_OK) {
-                return;
-        }
-        /* Change LPUART clock source and try again */
         PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LPUART1;
+#if ((MBED_CONF_TARGET_LPUART_CLOCK_SOURCE) & USE_LPUART_CLK_LSE)
+        if (baudrate <= 9600) {
+            // Enable LSE in case it is not already done
+            if (!__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY)) {
+                RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+                RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE;
+                RCC_OscInitStruct.LSEState       = RCC_LSE_ON;
+                RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_OFF;
+                HAL_RCC_OscConfig(&RCC_OscInitStruct);
+            }
+            // Keep it to verify if HAL_RCC_OscConfig didn't exit with a timeout
+            if (__HAL_RCC_GET_FLAG(RCC_FLAG_LSERDY)) {
+                PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_LSE;
+                HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
+                if (init_uart(obj) == HAL_OK) {
+                    return;
+                }
+            }
+        }
+#endif
+#if ((MBED_CONF_TARGET_LPUART_CLOCK_SOURCE) & USE_LPUART_CLK_PCLK1)
+        PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_PCLK1;
+        HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
+        if (init_uart(obj) == HAL_OK) {
+            return;
+        }
+#endif
+#if ((MBED_CONF_TARGET_LPUART_CLOCK_SOURCE) & USE_LPUART_CLK_HSI)
+        // Enable HSI in case it is not already done
+        if (!__HAL_RCC_GET_FLAG(RCC_FLAG_HSIRDY)) {
+            RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+            RCC_OscInitStruct.OscillatorType      = RCC_OSCILLATORTYPE_HSI;
+            RCC_OscInitStruct.HSIState            = RCC_HSI_ON;
+            RCC_OscInitStruct.PLL.PLLState        = RCC_PLL_OFF;
+            RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+            HAL_RCC_OscConfig(&RCC_OscInitStruct);
+        }
+        // Keep it to verify if HAL_RCC_OscConfig didn't exit with a timeout
+        if (__HAL_RCC_GET_FLAG(RCC_FLAG_HSIRDY)) {
+            PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_HSI;
+            HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
+            if (init_uart(obj) == HAL_OK) {
+                return;
+            }
+        }
+#endif
+        // Last chance using SYSCLK
         PeriphClkInitStruct.Lpuart1ClockSelection = RCC_LPUART1CLKSOURCE_SYSCLK;
         HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
     }
 #endif /* LPUART1_BASE */
+
     if (init_uart(obj) != HAL_OK) {
         debug("Cannot initialize UART with baud rate %u\n", baudrate);
     }
@@ -466,7 +474,7 @@ int serial_readable(serial_t *obj)
     /*  To avoid a target blocking case, let's check for
      *  possible OVERRUN error and discard it
      */
-    if(__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE)) {
+    if (__HAL_UART_GET_FLAG(huart, UART_FLAG_ORE)) {
         __HAL_UART_CLEAR_OREFLAG(huart);
     }
     // Check if data is received
@@ -528,10 +536,14 @@ HAL_StatusTypeDef init_uart(serial_t *obj)
 #if defined(LPUART1_BASE)
     if (huart->Instance == LPUART1) {
         if (obj_s->baudrate <= 9600) {
+#if ((MBED_CONF_TARGET_LPUART_CLOCK_SOURCE) & USE_LPUART_CLK_LSE) && !TARGET_STM32H7
             HAL_UARTEx_EnableClockStopMode(huart);
+#endif
             HAL_UARTEx_EnableStopMode(huart);
         } else {
+#if !TARGET_STM32H7
             HAL_UARTEx_DisableClockStopMode(huart);
+#endif
             HAL_UARTEx_DisableStopMode(huart);
         }
     }
@@ -650,6 +662,114 @@ int8_t get_uart_index(UARTName uart_name)
 #endif
 
     return -1;
+}
+
+/* Function used to protect deep sleep while a serial transmission is on-going.
+.* Returns 1 if there is at least 1 serial instance with an on-going transfer
+ * and 0 otherwise.
+*/
+int serial_is_tx_ongoing(void)
+{
+    int TxOngoing = 0;
+
+#if defined(USART1_BASE)
+    if (LL_USART_IsEnabled(USART1) && !LL_USART_IsActiveFlag_TC(USART1)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(USART2_BASE)
+    if (LL_USART_IsEnabled(USART2) && !LL_USART_IsActiveFlag_TC(USART2)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(USART3_BASE)
+    if (LL_USART_IsEnabled(USART3) && !LL_USART_IsActiveFlag_TC(USART3)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(UART4_BASE)
+    if (LL_USART_IsEnabled(UART4) && !LL_USART_IsActiveFlag_TC(UART4)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(USART4_BASE)
+    if (LL_USART_IsEnabled(USART4) && !LL_USART_IsActiveFlag_TC(USART4)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(UART5_BASE)
+    if (LL_USART_IsEnabled(UART5) && !LL_USART_IsActiveFlag_TC(UART5)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(USART5_BASE)
+    if (LL_USART_IsEnabled(USART5) && !LL_USART_IsActiveFlag_TC(USART5)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(USART6_BASE)
+    if (LL_USART_IsEnabled(USART6) && !LL_USART_IsActiveFlag_TC(USART6)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(UART7_BASE)
+    if (LL_USART_IsEnabled(UART7) && !LL_USART_IsActiveFlag_TC(UART7)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(USART7_BASE)
+    if (LL_USART_IsEnabled(USART7) && !LL_USART_IsActiveFlag_TC(USART7)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(UART8_BASE)
+    if (LL_USART_IsEnabled(UART8) && !LL_USART_IsActiveFlag_TC(UART8)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(USART8_BASE)
+    if (LL_USART_IsEnabled(USART8) && !LL_USART_IsActiveFlag_TC(USART8)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(UART9_BASE)
+    if (LL_USART_IsEnabled(UART9) && !LL_USART_IsActiveFlag_TC(UART9)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(UART10_BASE)
+    if (LL_USART_IsEnabled(UART10) && !LL_USART_IsActiveFlag_TC(UART10)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+#if defined(LPUART1_BASE)
+    if (LL_USART_IsEnabled(LPUART1) && !LL_USART_IsActiveFlag_TC(LPUART1)) {
+        TxOngoing |= 1;
+    }
+#endif
+
+    return TxOngoing;
+}
+
+#else
+
+int serial_is_tx_ongoing(void)
+{
+    return 0;
 }
 
 #endif /* DEVICE_SERIAL */

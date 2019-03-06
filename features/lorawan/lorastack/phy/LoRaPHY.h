@@ -45,6 +45,14 @@ class LoRaPHY : private mbed::NonCopyable<LoRaPHY> {
 public:
     virtual ~LoRaPHY();
 
+    /** Initialize LoRaPHY
+     *
+     *  LoRaMac calls this to initialize LoRaPHY.
+     *
+     * @param lora_time a pointer to LoRaWANTimeHandler object
+     */
+    void initialize(LoRaWANTimeHandler *lora_time);
+
     /** Stores a reference to Radio object.
      *
      * Application is responsible for constructing a 'LoRaRadio' object
@@ -52,7 +60,7 @@ public:
      *
      * @param radio    a reference to radio driver object
      */
-    void set_radio_instance(LoRaRadio& radio);
+    void set_radio_instance(LoRaRadio &radio);
 
     /** Puts radio in sleep mode.
      *
@@ -68,15 +76,9 @@ public:
 
     /** Puts radio in receive mode.
      *
-     * Requests the radio driver to enter receive mode for a given time or to
-     * enter continuous reception mode.
-     *
-     * @param is_rx_continuous    if true, sets the radio to enter continuous
-     *                            reception mode.
-     *
-     * @param max_rx_window       duration of receive window
+     * Requests the radio driver to enter receive mode.
      */
-    void setup_rx_window(bool is_rx_continuous, uint32_t max_rx_window);
+    void handle_receive(void);
 
     /** Delegates MAC layer request to transmit packet.
      *
@@ -145,7 +147,7 @@ public:
      *
      * @return bit mask, according to the LoRaWAN spec 1.0.2.
      */
-    virtual uint8_t request_new_channel(int8_t channel_id, channel_params_t* new_channel);
+    virtual uint8_t request_new_channel(int8_t channel_id, channel_params_t *new_channel);
 
     /** Process PHY layer state after a successful transmission.
      * @brief set_last_tx_done Updates times of the last transmission for the particular channel and
@@ -172,7 +174,7 @@ public:
      * @param size Size of the payload.
      *
      */
-    virtual void apply_cf_list(const uint8_t* payload, uint8_t size);
+    virtual void apply_cf_list(const uint8_t *payload, uint8_t size);
 
     /** Calculates the next datarate to set, when ADR is on or off.
      *
@@ -187,8 +189,8 @@ public:
      *
      * @return True, if an ADR request should be performed.
      */
-    bool get_next_ADR(bool restore_channel_mask, int8_t& dr_out,
-                      int8_t& tx_power_out, uint32_t& adr_ack_counter);
+    bool get_next_ADR(bool restore_channel_mask, int8_t &dr_out,
+                      int8_t &tx_power_out, uint32_t &adr_ack_counter);
 
     /** Configure radio reception.
      *
@@ -196,44 +198,67 @@ public:
      *
      * @return True, if the configuration was applied successfully.
      */
-    virtual bool rx_config(rx_config_params_t* config);
+    virtual bool rx_config(rx_config_params_t *config);
 
     /** Computing Receive Windows
      *
-     * For more details please consult the following document, chapter 3.1.2.
-     * http://www.semtech.com/images/datasheet/SX1272_settings_for_LoRaWAN_v2.0.pdf
-     * or
-     * http://www.semtech.com/images/datasheet/SX1276_settings_for_LoRaWAN_v2.0.pdf
+     * The algorithm tries to calculate the length of receive windows (i.e.,
+     * the minimum time it should remain to acquire a lock on the Preamble
+     * for synchronization) and the error offset which compensates for the system
+     * timing errors. Basic idea behind the algorithm is to optimize for the
+     * reception of last 'min_rx_symbols' symbols out of transmitted Premable
+     * symbols. The algorithm compensates for the clock drifts, tick granularity
+     * and system wake up time (from sleep state) by opening the window early for
+     * the lower SFs. For higher SFs, the symbol time is large enough that we can
+     * afford to open late (hence the positive offset).
+     * The table below shows the calculated values for SF7 to SF12 with 125 kHz
+     * bandwidth.
      *
-     *                 Downlink start: T = Tx + 1s (+/- 20 us)
-     *                            |
-     *             TRxEarly       |        TRxLate
-     *                |           |           |
-     *                |           |           +---+---+---+---+---+---+---+---+
-     *                |           |           |       Latest Rx window        |
-     *                |           |           +---+---+---+---+---+---+---+---+
-     *                |           |           |
+     * +----+-----+----------+---------+-------------------------+----------------------+-------------------------+
+     * | SF | BW (kHz) | rx_error (ms) | wake_up (ms) | min_rx_symbols | window_timeout(symb) | window_offset(ms) |
+     * +----+-----+----------+---------+-------------------------+----------------------+-------------------------+
+     * |  7 |      125 |             5 |            5 |              5 |                   18 |                -7 |
+     * |  8 |      125 |             5 |            5 |              5 |                   10 |                -4 |
+     * |  9 |      125 |             5 |            5 |              5 |                    6 |                 2 |
+     * | 10 |      125 |             5 |            5 |              5 |                    6 |                14 |
+     * | 11 |      125 |             5 |            5 |              5 |                    6 |                39 |
+     * | 12 |      125 |             5 |            5 |              5 |                    6 |                88 |
+     * +----+-----+----------+---------+-------------------------+----------------------+-------------------------+
+     *
+     * For example for SF7, the receive window will open at downlink start time
+     * plus the offset calculated and will remain open for the length window_timeout.
+     *
+     *             Symbol time = 1.024 ms
+     *             Downlink start: T = Tx + 1s (+/- 20 us)
+     *                               |
+     *                               |
+     *                               |
+     *                               |
+     *                               |
+     *                               +---+---+---+---+---+---+---+---+
+     *                               |       8 Preamble Symbols      |
+     *                               +---+---+---+---+---+---+---+---+
+     *   | RX Window start time = T +/- Offset
+     *   +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+     *   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |
+     *   +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+     *
+     * Similarly for SF12:
+     *
+     *             Symbol time = 32.768 ms
+     *             Downlink start: T = Tx + 1s (+/- 20 us)
+     *                |
+     *                |
+     *                |
+     *                |
+     *                |
      *                +---+---+---+---+---+---+---+---+
-     *                |       Earliest Rx window      |
+     *                |       8 Preamble Symbols      |
      *                +---+---+---+---+---+---+---+---+
-     *                            |
-     *                            +---+---+---+---+---+---+---+---+
-     *Downlink preamble 8 symbols |   |   |   |   |   |   |   |   |
-     *                            +---+---+---+---+---+---+---+---+
-     *
-     *                     Worst case Rx window timings
-     *
-     * TRxLate  = DEFAULT_MIN_RX_SYMBOLS * tSymbol - RADIO_WAKEUP_TIME
-     * TRxEarly = 8 - DEFAULT_MIN_RX_SYMBOLS * tSymbol - RxWindowTimeout - RADIO_WAKEUP_TIME
-     *
-     * TRxLate - TRxEarly = 2 * DEFAULT_SYSTEM_MAX_RX_ERROR
-     *
-     * RxOffset = ( TRxLate + TRxEarly ) / 2
-     *
-     * RxWindowTimeout = ( 2 * DEFAULT_MIN_RX_SYMBOLS - 8 ) * tSymbol + 2 * DEFAULT_SYSTEM_MAX_RX_ERROR
-     * RxOffset = 4 * tSymbol - RxWindowTimeout / 2 - RADIO_WAKE_UP_TIME
-     *
-     * The minimum value of RxWindowTimeout must be 5 symbols which implies that the system always tolerates at least an error of 1.5 * tSymbol.
+     *                           | RX Window start time = T +/- Offset
+     *                           +---+---+---+---+---+---+
+     *                           |   |   |   |   |   |   |
+     *                           +---+---+---+---+---+---+
      */
     /*!
      * Computes the RX window timeout and offset.
@@ -266,8 +291,8 @@ public:
      *
      * @return True, if the configuration was applied successfully.
      */
-    virtual bool tx_config(tx_config_params_t* tx_config, int8_t* tx_power,
-                           lorawan_time_t* tx_toa);
+    virtual bool tx_config(tx_config_params_t *tx_config, int8_t *tx_power,
+                           lorawan_time_t *tx_toa);
 
     /** Processes a Link ADR Request.
      *
@@ -283,10 +308,10 @@ public:
      *
      * @return The status of the operation, according to the LoRaMAC specification.
      */
-    virtual uint8_t link_ADR_request(adr_req_params_t* params,
-                                     int8_t* dr_out, int8_t* tx_power_out,
-                                     uint8_t* nb_rep_out,
-                                     uint8_t* nb_bytes_parsed);
+    virtual uint8_t link_ADR_request(adr_req_params_t *params,
+                                     int8_t *dr_out, int8_t *tx_power_out,
+                                     uint8_t *nb_rep_out,
+                                     uint8_t *nb_bytes_parsed);
 
     /** Accept or rejects RxParamSetupReq MAC command
      *
@@ -297,7 +322,7 @@ public:
      *
      * @return The status of the operation, according to the LoRaWAN specification.
      */
-    virtual uint8_t accept_rx_param_setup_req(rx_param_setup_req_t* params);
+    virtual uint8_t accept_rx_param_setup_req(rx_param_setup_req_t *params);
 
     /**
      * @brief accept_tx_param_setup_req Makes decision whether to accept or reject TxParamSetupReq MAC command.
@@ -343,9 +368,9 @@ public:
      *
      * @return Function status [1: OK, 0: Unable to find a channel on the current datarate].
      */
-    virtual lorawan_status_t set_next_channel(channel_selection_params_t* nextChanParams,
-                                              uint8_t* channel, lorawan_time_t* time,
-                                              lorawan_time_t* aggregatedTimeOff);
+    virtual lorawan_status_t set_next_channel(channel_selection_params_t *nextChanParams,
+                                              uint8_t *channel, lorawan_time_t *time,
+                                              lorawan_time_t *aggregatedTimeOff);
 
     /** Adds a channel to the channel list.
      *
@@ -359,7 +384,7 @@ public:
      * @return LORAWAN_STATUS_OK if everything goes fine, negative error code
      *         otherwise.
      */
-    virtual lorawan_status_t add_channel(const channel_params_t* new_channel, uint8_t id);
+    virtual lorawan_status_t add_channel(const channel_params_t *new_channel, uint8_t id);
 
     /** Removes a channel from the channel list.
      *
@@ -375,7 +400,7 @@ public:
      *
      * @param [in] frequency         Frequency to transmit at
      */
-    virtual void set_tx_cont_mode(cw_mode_params_t* continuous_wave,
+    virtual void set_tx_cont_mode(cw_mode_params_t *continuous_wave,
                                   uint32_t frequency = 0);
 
     /** Computes new data rate according to the given offset
@@ -422,6 +447,14 @@ public:
     uint8_t get_default_tx_datarate();
 
     /**
+     * @brief get_default_max_tx_datarate Gets the maximum achievable data rate for
+     *        LoRa modulation. This will always be the highest data rate achievable with
+     *        LoRa as defined in the regional specifications.
+     * @return Maximum achievable data rate with LoRa modulation.
+     */
+    uint8_t get_default_max_tx_datarate();
+
+    /**
      * @brief get_default_tx_power Gets the default TX power
      * @return Default TX power
      */
@@ -464,7 +497,7 @@ public:
      * @param get_default If true the default mask is returned, otherwise the current mask is returned
      * @return A channel mask
      */
-    uint16_t* get_channel_mask(bool get_default = false);
+    uint16_t *get_channel_mask(bool get_default = false);
 
     /**
      * @brief get_max_nb_channels Gets maximum number of channels supported
@@ -476,7 +509,7 @@ public:
      * @brief get_phy_channels Gets PHY channels
      * @return PHY channels
      */
-    channel_params_t* get_phy_channels();
+    channel_params_t *get_phy_channels();
 
     /**
      * @brief is_custom_channel_plan_supported Checks if custom channel plan is supported
@@ -523,7 +556,7 @@ public: //Verifiers
     bool verify_nb_join_trials(uint8_t nb_join_trials);
 
 protected:
-    LoRaPHY(LoRaWANTimeHandler &lora_time);
+    LoRaPHY();
 
     /**
      * Looks up corresponding band for a frequency. Returns -1 if not in any band.
@@ -543,13 +576,12 @@ protected:
     /**
      * Verifies, if a datarate is available on an active channel.
      */
-    bool verify_channel_DR(uint8_t nbChannels, uint16_t* channelsMask, int8_t dr,
-                           int8_t minDr, int8_t maxDr, channel_params_t* channels);
+    bool verify_channel_DR(uint16_t *channelsMask, int8_t dr);
 
     /**
      * Disables a channel in a given channels mask.
      */
-    bool disable_channel(uint16_t* channel_mask, uint8_t id, uint8_t max_channels);
+    bool disable_channel(uint16_t *channel_mask, uint8_t id, uint8_t max_channels);
 
     /**
      * Counts number of bits on in a given mask
@@ -559,48 +591,40 @@ protected:
     /**
      * Counts the number of active channels in a given channels mask.
      */
-    uint8_t num_active_channels(uint16_t* channel_mask, uint8_t start_idx,
+    uint8_t num_active_channels(uint16_t *channel_mask, uint8_t start_idx,
                                 uint8_t stop_idx);
 
     /**
      * Copy channel masks.
      */
-    void copy_channel_mask(uint16_t* dest_mask, uint16_t* src_mask, uint8_t len);
+    void copy_channel_mask(uint16_t *dest_mask, uint16_t *src_mask, uint8_t len);
 
     /**
      * Updates the time-offs of the bands.
      */
-    lorawan_time_t update_band_timeoff(bool joined, bool dutyCycle, band_t* bands,
+    lorawan_time_t update_band_timeoff(bool joined, bool dutyCycle, band_t *bands,
                                        uint8_t nb_bands);
 
     /**
      * Parses the parameter of an LinkAdrRequest.
      */
-    uint8_t parse_link_ADR_req(const uint8_t* payload, link_adr_params_t* adr_params);
+    uint8_t parse_link_ADR_req(const uint8_t *payload, uint8_t payload_size,
+                               link_adr_params_t *adr_params);
 
     /**
      * Verifies and updates the datarate, the TX power and the number of repetitions
      * of a LinkAdrRequest.
      */
-    uint8_t verify_link_ADR_req(verify_adr_params_t* verify_params, int8_t* dr,
-                                int8_t* tx_pow, uint8_t* nb_rep);
-
-    /**
-     * Computes the symbol time for LoRa modulation.
-     */
-    double compute_symb_timeout_lora(uint8_t phy_dr, uint32_t bandwidth );
-
-    /**
-     * Computes the symbol time for FSK modulation.
-     */
-    double compute_symb_timeout_fsk(uint8_t phy_dr);
+    uint8_t verify_link_ADR_req(verify_adr_params_t *verify_params, int8_t *dr,
+                                int8_t *tx_pow, uint8_t *nb_rep);
 
     /**
      * Computes the RX window timeout and the RX window offset.
      */
-    void get_rx_window_params(double t_symbol, uint8_t min_rx_symbols,
-                              uint32_t rx_error, uint32_t wakeup_time,
-                              uint32_t* window_timeout, int32_t* window_offset);
+    void get_rx_window_params(float t_symbol, uint8_t min_rx_symbols,
+                              float rx_error, float wakeup_time,
+                              uint32_t *window_length, int32_t *window_offset,
+                              uint8_t phy_dr);
 
     /**
      * Computes the txPower, based on the max EIRP and the antenna gain.
@@ -622,15 +646,27 @@ protected:
      */
     uint8_t get_bandwidth(uint8_t dr_index);
 
-    uint8_t enabled_channel_count(bool joined, uint8_t datarate,
-                                  const uint16_t *mask, uint8_t* enabledChannels,
-                                  uint8_t* delayTx);
+    uint8_t enabled_channel_count(uint8_t datarate,
+                                  const uint16_t *mask, uint8_t *enabledChannels,
+                                  uint8_t *delayTx);
 
     bool is_datarate_supported(const int8_t datarate) const;
 
+private:
+
+    /**
+     * Computes the symbol time for LoRa modulation.
+     */
+    float compute_symb_timeout_lora(uint8_t phy_dr, uint32_t bandwidth);
+
+    /**
+     * Computes the symbol time for FSK modulation.
+     */
+    float compute_symb_timeout_fsk(uint8_t phy_dr);
+
 protected:
     LoRaRadio *_radio;
-    LoRaWANTimeHandler &_lora_time;
+    LoRaWANTimeHandler *_lora_time;
     loraphy_params_t phy_params;
 };
 

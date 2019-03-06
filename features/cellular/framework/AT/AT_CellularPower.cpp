@@ -49,25 +49,20 @@ nsapi_error_t AT_CellularPower::set_at_mode()
     _at.lock();
     _at.flush();
     _at.cmd_start("ATE0"); // echo off
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
 
     _at.cmd_start("AT+CMEE=1"); // verbose responses
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
     return _at.unlock_return_error();
 }
 
-nsapi_error_t AT_CellularPower::set_power_level(int func_level)
+nsapi_error_t AT_CellularPower::set_power_level(int func_level, int do_reset)
 {
     _at.lock();
     _at.cmd_start("AT+CFUN=");
     _at.write_int(func_level);
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.write_int(do_reset);
+    _at.cmd_stop_read_resp();
     return _at.unlock_return_error();
 }
 
@@ -77,9 +72,7 @@ nsapi_error_t AT_CellularPower::reset()
     _at.cmd_start("AT+CFUN=");// reset to full power levels
     _at.write_int(1);
     _at.write_int(1);
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
     return _at.unlock_return_error();
 }
 
@@ -91,9 +84,7 @@ nsapi_error_t AT_CellularPower::opt_power_save_mode(int periodic_time, int activ
         // disable PSM
         _at.cmd_start("AT+CPSMS=");
         _at.write_int(0);
-        _at.cmd_stop();
-        _at.resp_start();
-        _at.resp_stop();
+        _at.cmd_stop_read_resp();
     } else {
         /**
             Table 10.5.163a/3GPP TS 24.008: GPRS Timer 3 information element
@@ -111,34 +102,34 @@ nsapi_error_t AT_CellularPower::opt_power_save_mode(int periodic_time, int activ
             1 1 0 value is incremented in multiples of 320 hours (NOTE 1)
             1 1 1 value indicates that the timer is deactivated (NOTE 2).
          */
-        char pt[8+1];// timer value encoded as 3GPP IE
+        char pt[8 + 1]; // timer value encoded as 3GPP IE
         const int ie_value_max = 0x1f;
         uint32_t periodic_timer = 0;
-        if (periodic_time <= 2*ie_value_max) { // multiples of 2 seconds
-            periodic_timer = periodic_time/2;
+        if (periodic_time <= 2 * ie_value_max) { // multiples of 2 seconds
+            periodic_timer = periodic_time / 2;
             strcpy(pt, "01100000");
         } else {
-            if (periodic_time <= 30*ie_value_max) { // multiples of 30 seconds
-                periodic_timer = periodic_time/30;
+            if (periodic_time <= 30 * ie_value_max) { // multiples of 30 seconds
+                periodic_timer = periodic_time / 30;
                 strcpy(pt, "10000000");
             } else {
-                if (periodic_time <= 60*ie_value_max) { // multiples of 1 minute
-                    periodic_timer = periodic_time/60;
+                if (periodic_time <= 60 * ie_value_max) { // multiples of 1 minute
+                    periodic_timer = periodic_time / 60;
                     strcpy(pt, "10100000");
                 } else {
-                    if (periodic_time <= 10*60*ie_value_max) { // multiples of 10 minutes
-                        periodic_timer = periodic_time/(10*60);
+                    if (periodic_time <= 10 * 60 * ie_value_max) { // multiples of 10 minutes
+                        periodic_timer = periodic_time / (10 * 60);
                         strcpy(pt, "00000000");
                     } else {
-                        if (periodic_time <= 60*60*ie_value_max) { // multiples of 1 hour
-                            periodic_timer = periodic_time/(60*60);
+                        if (periodic_time <= 60 * 60 * ie_value_max) { // multiples of 1 hour
+                            periodic_timer = periodic_time / (60 * 60);
                             strcpy(pt, "00100000");
                         } else {
-                            if (periodic_time <= 10*60*60*ie_value_max) { // multiples of 10 hours
-                                periodic_timer = periodic_time/(10*60*60);
+                            if (periodic_time <= 10 * 60 * 60 * ie_value_max) { // multiples of 10 hours
+                                periodic_timer = periodic_time / (10 * 60 * 60);
                                 strcpy(pt, "01000000");
                             } else { // multiples of 320 hours
-                                int t = periodic_time / (320*60*60);
+                                int t = periodic_time / (320 * 60 * 60);
                                 if (t > ie_value_max) {
                                     t = ie_value_max;
                                 }
@@ -151,7 +142,7 @@ nsapi_error_t AT_CellularPower::opt_power_save_mode(int periodic_time, int activ
             }
         }
 
-        uint_to_binary_str(periodic_timer, &pt[3], sizeof(pt)-3, PSMTimerBits);
+        uint_to_binary_str(periodic_timer, &pt[3], sizeof(pt) - 3, PSMTimerBits);
         pt[8] = '\0';
 
         /**
@@ -169,17 +160,17 @@ nsapi_error_t AT_CellularPower::opt_power_save_mode(int periodic_time, int activ
 
             Other values shall be interpreted as multiples of 1 minute in this version of the protocol.
         */
-        char at[8+1];
+        char at[8 + 1];
         uint32_t active_timer; // timer value encoded as 3GPP IE
-        if (active_time <= 2*ie_value_max) { // multiples of 2 seconds
-            active_timer = active_time/2;
+        if (active_time <= 2 * ie_value_max) { // multiples of 2 seconds
+            active_timer = active_time / 2;
             strcpy(at, "00000000");
         } else {
-            if (active_time <= 60*ie_value_max) { // multiples of 1 minute
-                active_timer = (1<<5) | (active_time/60);
+            if (active_time <= 60 * ie_value_max) { // multiples of 1 minute
+                active_timer = (1 << 5) | (active_time / 60);
                 strcpy(at, "00100000");
             } else { // multiples of decihours
-                int t = active_time / (6*60);
+                int t = active_time / (6 * 60);
                 if (t > ie_value_max) {
                     t = ie_value_max;
                 }
@@ -188,8 +179,8 @@ nsapi_error_t AT_CellularPower::opt_power_save_mode(int periodic_time, int activ
             }
         }
 
-        uint_to_binary_str(active_timer, &at[3], sizeof(at)-3, PSMTimerBits);
-        pt[8] = '\0';
+        uint_to_binary_str(active_timer, &at[3], sizeof(at) - 3, PSMTimerBits);
+        at[8] = '\0';
 
         // request for both GPRS and LTE
         _at.cmd_start("AT+CPSMS=");
@@ -198,10 +189,7 @@ nsapi_error_t AT_CellularPower::opt_power_save_mode(int periodic_time, int activ
         _at.write_string(at);
         _at.write_string(pt);
         _at.write_string(at);
-        _at.cmd_stop();
-        _at.resp_start();
-        _at.resp_stop();
-
+        _at.cmd_stop_read_resp();
 
         if (_at.get_last_error() != NSAPI_ERROR_OK) {
             tr_warn("Power save mode not enabled!");
@@ -226,9 +214,7 @@ nsapi_error_t AT_CellularPower::opt_receive_period(int mode, EDRXAccessTechnolog
     _at.write_int(mode);
     _at.write_int(act_type);
     _at.write_string(edrx);
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
 
     return _at.unlock_return_error();
 }
@@ -237,17 +223,13 @@ nsapi_error_t AT_CellularPower::is_device_ready()
 {
     _at.lock();
     _at.cmd_start("AT");
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
 
     // we need to do this twice because for example after data mode the first 'AT' command will give modem a
     // stimulus that we are back to command mode.
     _at.clear_error();
     _at.cmd_start("AT");
-    _at.cmd_stop();
-    _at.resp_start();
-    _at.resp_stop();
+    _at.cmd_stop_read_resp();
 
     return _at.unlock_return_error();
 }

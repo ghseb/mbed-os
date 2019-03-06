@@ -340,7 +340,7 @@ uint16_t sn_coap_builder_calc_needed_packet_data_size_2(sn_coap_hdr_s *src_coap_
                 returned_byte_count += sn_coap_builder_options_build_add_uint_option(NULL, src_coap_msg_ptr->options_list_ptr->size2, COAP_OPTION_SIZE2, &tempInt);
             }
         }
-#if SN_COAP_MAX_BLOCKWISE_PAYLOAD_SIZE
+#if SN_COAP_BLOCKWISE_ENABLED || SN_COAP_MAX_BLOCKWISE_PAYLOAD_SIZE
         if ((src_coap_msg_ptr->payload_len > SN_COAP_MAX_NONBLOCKWISE_PAYLOAD_SIZE) &&
             (src_coap_msg_ptr->payload_len > blockwise_payload_size) &&
             (blockwise_payload_size > 0)) {
@@ -547,7 +547,10 @@ static int8_t sn_coap_builder_options_build(uint8_t **dst_packet_data_pptr, sn_c
     /* * * * Check if Options are used at all  * * * */
     if (src_coap_msg_ptr->uri_path_ptr == NULL && src_coap_msg_ptr->token_ptr == NULL &&
             src_coap_msg_ptr->content_format == COAP_CT_NONE && src_coap_msg_ptr->options_list_ptr == NULL) {
-        tr_error("sn_coap_builder_options_build - options not used!");
+        /* If the empty message is confirmable it is CoAP ping. */
+        if (src_coap_msg_ptr->msg_type != COAP_MSG_TYPE_CONFIRMABLE) {
+            tr_error("sn_coap_builder_options_build - options not used!");
+        }
         return 0;
     }
 

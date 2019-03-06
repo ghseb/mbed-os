@@ -24,9 +24,19 @@ import sys
 from subprocess import check_output, CalledProcessError, Popen, PIPE
 import shutil
 from jinja2.exceptions import TemplateNotFound
+from tools.resources import FileType
 from tools.export.exporters import Exporter, apply_supported_whitelist
 from tools.utils import NotSupportedException
 from tools.targets import TARGET_MAP
+
+SHELL_ESCAPE_TABLE = {
+    "(": "\(",
+    ")": "\)",
+}
+
+
+def shell_escape(string):
+    return "".join(SHELL_ESCAPE_TABLE.get(char, char) for char in string)
 
 
 class Makefile(Exporter):
@@ -44,7 +54,8 @@ class Makefile(Exporter):
         "MCU_NRF51Code.binary_hook",
         "TEENSY3_1Code.binary_hook",
         "LPCTargetCode.lpc_patch",
-        "LPC4088Code.binary_hook"
+        "LPC4088Code.binary_hook",
+        "PSOC6Code.complete"
     ])
 
     @classmethod
@@ -69,7 +80,7 @@ class Makefile(Exporter):
                           self.resources.cpp_sources]
 
         libraries = [self.prepare_lib(basename(lib)) for lib
-                     in self.resources.libraries]
+                     in self.libraries]
         sys_libs = [self.prepare_sys_lib(lib) for lib
                     in self.toolchain.sys_libs]
 
@@ -82,33 +93,30 @@ class Makefile(Exporter):
             'linker_script': self.resources.linker_script,
             'libraries': libraries,
             'ld_sys_libs': sys_libs,
-            'hex_files': self.resources.hex_files,
+            'hex_files': self.hex_files,
             'vpath': (["../../.."]
                       if (basename(dirname(dirname(self.export_dir)))
                           == "projectfiles")
                       else [".."]),
-            'cc_cmd': " ".join(["\'" + part + "\'" for part
-                                in ([basename(self.toolchain.cc[0])] +
-                                    self.toolchain.cc[1:])]),
-            'cppc_cmd': " ".join(["\'" + part + "\'" for part
-                                  in ([basename(self.toolchain.cppc[0])] +
-                                      self.toolchain.cppc[1:])]),
-            'asm_cmd': " ".join(["\'" + part + "\'" for part
-                                in ([basename(self.toolchain.asm[0])] +
-                                    self.toolchain.asm[1:])]),
-            'ld_cmd': "\'" + basename(self.toolchain.ld[0]) + "\'",
-            'elf2bin_cmd': "\'" + basename(self.toolchain.elf2bin) + "\'",
+            'cc_cmd': basename(self.toolchain.cc[0]),
+            'cppc_cmd': basename(self.toolchain.cppc[0]),
+            'asm_cmd': basename(self.toolchain.asm[0]),
+            'ld_cmd': basename(self.toolchain.ld[0]),
+            'elf2bin_cmd': basename(self.toolchain.elf2bin),
             'link_script_ext': self.toolchain.LINKER_EXT,
             'link_script_option': self.LINK_SCRIPT_OPTION,
             'user_library_flag': self.USER_LIBRARY_FLAG,
             'needs_asm_preproc': self.PREPROCESS_ASM,
+            'shell_escape': shell_escape,
+            'response_option': self.RESPONSE_OPTION,
         }
 
         if hasattr(self.toolchain, "preproc"):
-            ctx['pp_cmd'] = " ".join(["\'" + part + "\'" for part
-                                      in ([basename(self.toolchain.preproc[0])] +
-                                          self.toolchain.preproc[1:] + 
-                                          self.toolchain.ld[1:])])
+            ctx['pp_cmd'] = " ".join(
+                [basename(self.toolchain.preproc[0])] +
+                self.toolchain.preproc[1:] +
+                self.toolchain.ld[1:]
+            )
         else:
             ctx['pp_cmd'] = None
 
@@ -124,10 +132,20 @@ class Makefile(Exporter):
                     'to_be_compiled']:
             ctx[key] = sorted(ctx[key])
         ctx.update(self.format_flags())
+        ctx['asm_flags'].extend(self.toolchain.asm[1:])
+        ctx['c_flags'].extend(self.toolchain.cc[1:])
+        ctx['cxx_flags'].extend(self.toolchain.cppc[1:])
 
         # Add the virtual path the the include option in the ASM flags
-        ctx['asm_flags'] = map(lambda item: "-I" + ctx['vpath'][0] + "/" + item[2:]
-                               if item.startswith('-I') else item, ctx['asm_flags'])
+        new_asm_flags = []
+        for flag in ctx['asm_flags']:
+            if flag.startswith('-I'):
+                new_asm_flags.append("-I{}/{}".format(ctx['vpath'][0], flag[2:]))
+            elif flag.startswith('--preinclude='):
+                new_asm_flags.append("--preinclude={}/{}".format(ctx['vpath'][0], flag[13:]))
+            else:
+                new_asm_flags.append(flag)
+        ctx['asm_flags'] = new_asm_flags
 
         for templatefile in \
             ['makefile/%s_%s.tmpl' % (self.TEMPLATE,
@@ -148,8 +166,8 @@ class Makefile(Exporter):
         """Format toolchain flags for Makefile"""
         flags = {}
         for k, v in self.flags.items():
-            if k in ['asm_flags', 'c_flags', 'cxx_flags']:
-                flags[k] = map(lambda x: x.replace('"', '\\"'), v)
+            if k in ['c_flags', 'cxx_flags']:
+                flags[k] = list(map(lambda x: x.replace('"', '\\"'), v))
             else:
                 flags[k] = v
 
@@ -211,6 +229,7 @@ class GccArm(Makefile):
     TOOLCHAIN = "GCC_ARM"
     LINK_SCRIPT_OPTION = "-T"
     USER_LIBRARY_FLAG = "-L"
+    RESPONSE_OPTION = "@"
 
     @staticmethod
     def prepare_lib(libname):
@@ -228,6 +247,7 @@ class Arm(Makefile):
     LINK_SCRIPT_OPTION = "--scatter"
     USER_LIBRARY_FLAG = "--userlibpath "
     TEMPLATE = 'make-arm'
+    RESPONSE_OPTION = "--via "
 
     @staticmethod
     def prepare_lib(libname):
@@ -239,11 +259,12 @@ class Arm(Makefile):
 
     def generate(self):
         if self.resources.linker_script:
-            sct_file = self.resources.linker_script
+            sct_file = self.resources.get_file_refs(FileType.LD_SCRIPT)[-1]
             new_script = self.toolchain.correct_scatter_shebang(
-                sct_file, join(self.resources.file_basepath[sct_file], "BUILD"))
+                sct_file.path, join("..", dirname(sct_file.name)))
             if new_script is not sct_file:
-                self.resources.linker_script = new_script
+                self.resources.add_files_to_type(
+                    FileType.LD_SCRIPT, [new_script])
                 self.generated_files.append(new_script)
         return super(Arm, self).generate()
 
@@ -262,10 +283,11 @@ class Armc6(Arm):
 class IAR(Makefile):
     """IAR specific makefile target"""
     NAME = 'Make-IAR'
-    TEMPLATE = 'm2m-make-iar'
+    TEMPLATE = 'make-iar'
     TOOLCHAIN = "IAR"
     LINK_SCRIPT_OPTION = "--config"
     USER_LIBRARY_FLAG = "-L"
+    RESPONSE_OPTION = "-f "
 
     @staticmethod
     def prepare_lib(libname):

@@ -1,16 +1,5 @@
 {
     "config": {
-        "header-file": {
-            "help" : "String for including your driver header file",
-            "value" : "\"EthernetInterface.h\""
-        },
-        "object-construction" : {
-            "value" : "new EthernetInterface()"
-        },
-        "connect-statement" : {
-            "help" : "Must use 'net' variable name",
-            "value" : "net->connect()"
-        },
         "echo-server-addr" : {
             "help" : "IP address of echo server",
             "value" : "\"echo.mbedcloudtesting.com\""
@@ -19,9 +8,17 @@
             "help" : "Port of echo server",
             "value" : "7"
         },
-        "tcp-echo-prefix" : {
-            "help" : "Some servers send a prefix before echoed message",
-            "value" : null
+        "echo-server-discard-port" : {
+            "help" : "Discard port of echo server",
+            "value" : "9"
+        },
+        "echo-server-port-tls" : {
+            "help" : "Port of echo server for TLS",
+            "value" : "2007"
+        },
+        "echo-server-discard-port-tls" : {
+            "help" : "Discard port of echo server for TLS",
+            "value" : "2009"
         },
         "sim-blockdevice": {
             "help": "Simulated block device, requires sufficient heap",
@@ -31,8 +28,7 @@
     },
     "target_overrides": {
         "*": {
-            "target.features_add": ["LWIP"],
-            "nsapi.default-stack": "LWIP"
+            "target.network-default-interface-type": "ETHERNET"
         }
     }
 }

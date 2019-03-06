@@ -36,7 +36,7 @@
  *
  */
 
-#if (defined(DEVICE_TRNG) && defined(DEVICE_LPTICKER))
+#if DEVICE_TRNG && DEVICE_LPTICKER
 
 #include "hal/trng_api.h"
 #include "hal/lp_ticker_api.h"
@@ -73,7 +73,6 @@ void trng_init(trng_t *obj)
 
     if (first_init) {
         first_init = false;
-        lp_ticker_init();
     }
 }
 

@@ -1,6 +1,7 @@
 #include "mbed_assert.h"
 #include "mbed_stats.h"
 #include "mbed_power_mgmt.h"
+#include "mbed_version.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -12,7 +13,7 @@
 #warning Statistics are currently not supported without the rtos.
 #endif
 
-#if defined(MBED_CPU_STATS_ENABLED) && (!defined(DEVICE_LPTICKER) || !defined(DEVICE_SLEEP))
+#if defined(MBED_CPU_STATS_ENABLED) && (!DEVICE_LPTICKER || !DEVICE_SLEEP)
 #warning CPU statistics are not supported without low power timer support.
 #endif
 
@@ -20,7 +21,7 @@ void mbed_stats_cpu_get(mbed_stats_cpu_t *stats)
 {
     MBED_ASSERT(stats != NULL);
     memset(stats, 0, sizeof(mbed_stats_cpu_t));
-#if defined(MBED_CPU_STATS_ENABLED) && defined(DEVICE_LPTICKER) && defined(DEVICE_SLEEP)
+#if defined(MBED_CPU_STATS_ENABLED) && DEVICE_LPTICKER && DEVICE_SLEEP
     stats->uptime = mbed_uptime();
     stats->idle_time = mbed_time_idle();
     stats->sleep_time = mbed_time_sleep();
@@ -40,7 +41,10 @@ void mbed_stats_stack_get(mbed_stats_stack_t *stats)
     osThreadId_t *threads;
 
     threads = malloc(sizeof(osThreadId_t) * thread_n);
-    MBED_ASSERT(threads != NULL);
+    // Don't fail on lack of memory
+    if (!threads) {
+        return;
+    }
 
     osKernelLock();
     thread_n = osThreadEnumerate(threads, thread_n);
@@ -68,7 +72,10 @@ size_t mbed_stats_stack_get_each(mbed_stats_stack_t *stats, size_t count)
     osThreadId_t *threads;
 
     threads = malloc(sizeof(osThreadId_t) * count);
-    MBED_ASSERT(threads != NULL);
+    // Don't fail on lack of memory
+    if (!threads) {
+        return 0;
+    }
 
     osKernelLock();
     count = osThreadEnumerate(threads, count);
@@ -123,6 +130,40 @@ void mbed_stats_sys_get(mbed_stats_sys_t *stats)
     memset(stats, 0, sizeof(mbed_stats_sys_t));
 
 #if defined(MBED_SYS_STATS_ENABLED)
+    stats->os_version = MBED_VERSION;
+#if defined(MBED_RAM_START) && defined(MBED_RAM_SIZE)
+    stats->ram_start[0] = MBED_RAM_START;
+    stats->ram_size[0] = MBED_RAM_SIZE;
+#endif
+#if defined(MBED_ROM_START) && defined(MBED_ROM_SIZE)
+    stats->rom_start[0] = MBED_ROM_START;
+    stats->rom_size[0] = MBED_ROM_SIZE;
+#endif
+#if defined(MBED_RAM1_START) && defined(MBED_RAM1_SIZE)
+    stats->ram_start[1] = MBED_RAM1_START;
+    stats->ram_size[1] = MBED_RAM1_SIZE;
+#endif
+#if defined(MBED_RAM2_START) && defined(MBED_RAM2_SIZE)
+    stats->ram_start[2] = MBED_RAM2_START;
+    stats->ram_size[2] = MBED_RAM2_SIZE;
+#endif
+#if defined(MBED_RAM3_START) && defined(MBED_RAM3_SIZE)
+    stats->ram_start[3] = MBED_RAM3_START;
+    stats->ram_size[3] = MBED_RAM3_SIZE;
+#endif
+#if defined(MBED_ROM1_START) && defined(MBED_ROM1_SIZE)
+    stats->rom_start[1] = MBED_ROM1_START;
+    stats->rom_size[1] = MBED_ROM1_SIZE;
+#endif
+#if defined(MBED_ROM2_START) && defined(MBED_ROM2_SIZE)
+    stats->rom_start[2] = MBED_ROM2_START;
+    stats->rom_size[2] = MBED_ROM2_SIZE;
+#endif
+#if defined(MBED_ROM3_START) && defined(MBED_ROM3_SIZE)
+    stats->rom_start[3] = MBED_ROM3_START;
+    stats->rom_size[3] = MBED_ROM3_SIZE;
+#endif
+
 #if defined(__CORTEX_M)
     stats->cpu_id = SCB->CPUID;
 #endif

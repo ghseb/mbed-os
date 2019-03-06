@@ -24,12 +24,16 @@
 #include <string.h>
 #include <algorithm>
 #include "FlashIAP.h"
-#include "mbed_assert.h"
+#include "platform/mbed_assert.h"
+#include "platform/ScopedRamExecutionLock.h"
+#include "platform/ScopedRomWriteLock.h"
 
 
-#ifdef DEVICE_FLASH
+#if DEVICE_FLASH
 
 namespace mbed {
+
+const unsigned int num_write_retries = 16;
 
 SingletonPtr<PlatformMutex> FlashIAP::_mutex;
 
@@ -56,8 +60,12 @@ int FlashIAP::init()
 {
     int ret = 0;
     _mutex->lock();
-    if (flash_init(&_flash)) {
-        ret = -1;
+    {
+        ScopedRamExecutionLock make_ram_executable;
+        ScopedRomWriteLock make_rom_writable;
+        if (flash_init(&_flash)) {
+            ret = -1;
+        }
     }
     uint32_t page_size = get_page_size();
     _page_buf = new uint8_t[page_size];
@@ -70,8 +78,12 @@ int FlashIAP::deinit()
 {
     int ret = 0;
     _mutex->lock();
-    if (flash_free(&_flash)) {
-        ret = -1;
+    {
+        ScopedRamExecutionLock make_ram_executable;
+        ScopedRomWriteLock make_rom_writable;
+        if (flash_free(&_flash)) {
+            ret = -1;
+        }
     }
     delete[] _page_buf;
     _mutex->unlock();
@@ -83,7 +95,11 @@ int FlashIAP::read(void *buffer, uint32_t addr, uint32_t size)
 {
     int32_t ret = -1;
     _mutex->lock();
-    ret = flash_read(&_flash, addr, (uint8_t *) buffer, size);
+    {
+        ScopedRamExecutionLock make_ram_executable;
+        ScopedRomWriteLock make_rom_writable;
+        ret = flash_read(&_flash, addr, (uint8_t *) buffer, size);
+    }
     _mutex->unlock();
     return ret;
 }
@@ -99,13 +115,13 @@ int FlashIAP::program(const void *buffer, uint32_t addr, uint32_t size)
 
     // addr should be aligned to page size
     if (!is_aligned(addr, page_size) || (!buffer) ||
-        ((addr + size) > (flash_start_addr + flash_size))) {
+            ((addr + size) > (flash_start_addr + flash_size))) {
         return -1;
     }
 
     int ret = 0;
     _mutex->lock();
-    while (size) {
+    while (size && !ret) {
         uint32_t current_sector_size = flash_get_sector_size(&_flash, addr);
         bool unaligned_src = (((size_t) buf / sizeof(uint32_t) * sizeof(uint32_t)) != (size_t) buf);
         chunk = std::min(current_sector_size - (addr % current_sector_size), size);
@@ -126,9 +142,19 @@ int FlashIAP::program(const void *buffer, uint32_t addr, uint32_t size)
             prog_buf = buf;
             prog_size = chunk;
         }
-        if (flash_program_page(&_flash, addr, prog_buf, prog_size)) {
-            ret = -1;
-            break;
+        {
+            // Few boards may fail the write actions due to HW limitations (like critical drivers that
+            // disable flash operations). Just retry a few times until success.
+            for (unsigned int retry = 0; retry < num_write_retries; retry++) {
+                ScopedRamExecutionLock make_ram_executable;
+                ScopedRomWriteLock make_rom_writable;
+                ret = flash_program_page(&_flash, addr, prog_buf, prog_size);
+                if (ret) {
+                    ret = -1;
+                } else {
+                    break;
+                }
+            }
         }
         size -= chunk;
         addr += chunk;
@@ -143,7 +169,7 @@ bool FlashIAP::is_aligned_to_sector(uint32_t addr, uint32_t size)
 {
     uint32_t current_sector_size = flash_get_sector_size(&_flash, addr);
     if (!is_aligned(size, current_sector_size) ||
-        !is_aligned(addr, current_sector_size)) {
+            !is_aligned(addr, current_sector_size)) {
         return false;
     } else {
         return true;
@@ -160,7 +186,7 @@ int FlashIAP::erase(uint32_t addr, uint32_t size)
 
     if (erase_end_addr > flash_end_addr) {
         return -1;
-    } else if (erase_end_addr < flash_end_addr){
+    } else if (erase_end_addr < flash_end_addr) {
         uint32_t following_sector_size = flash_get_sector_size(&_flash, erase_end_addr);
         if (!is_aligned(erase_end_addr, following_sector_size)) {
             return -1;
@@ -169,11 +195,18 @@ int FlashIAP::erase(uint32_t addr, uint32_t size)
 
     int32_t ret = 0;
     _mutex->lock();
-    while (size) {
-        ret = flash_erase_sector(&_flash, addr);
-        if (ret != 0) {
-            ret = -1;
-            break;
+    while (size && !ret) {
+        // Few boards may fail the erase actions due to HW limitations (like critical drivers that
+        // disable flash operations). Just retry a few times until success.
+        for (unsigned int retry = 0; retry < num_write_retries; retry++) {
+            ScopedRamExecutionLock make_ram_executable;
+            ScopedRomWriteLock make_rom_writable;
+            ret = flash_erase_sector(&_flash, addr);
+            if (ret) {
+                ret = -1;
+            } else {
+                break;
+            }
         }
         current_sector_size = flash_get_sector_size(&_flash, addr);
         size -= current_sector_size;
@@ -201,6 +234,11 @@ uint32_t FlashIAP::get_flash_start() const
 uint32_t FlashIAP::get_flash_size() const
 {
     return flash_get_size(&_flash);
+}
+
+uint8_t FlashIAP::get_erase_value() const
+{
+    return flash_get_erase_value(&_flash);
 }
 
 }

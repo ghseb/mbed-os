@@ -31,7 +31,7 @@ sys.path.insert(0, ROOT)
 
 from tools.toolchains import TOOLCHAINS, TOOLCHAIN_CLASSES, TOOLCHAIN_PATHS
 from tools.toolchains import mbedToolchain
-from tools.targets import TARGET_NAMES, TARGET_MAP
+from tools.targets import TARGET_NAMES, TARGET_MAP, Target
 from tools.options import get_default_options_parser
 from tools.options import extract_profile
 from tools.options import extract_mcus
@@ -43,6 +43,7 @@ from tools.settings import CPPCHECK_CMD, CPPCHECK_MSG_FORMAT, CLI_COLOR_MAP
 from tools.notifier.term import TerminalNotifier
 from tools.utils import argparse_filestring_type, args_error, argparse_many
 from tools.utils import argparse_filestring_type, argparse_dir_not_parent
+from tools.paths import is_relative_to_root
 
 if __name__ == '__main__':
     start = time()
@@ -187,6 +188,11 @@ if __name__ == '__main__':
                     notifier = TerminalNotifier(options.verbose, options.silent)
                     mcu = TARGET_MAP[target]
                     profile = extract_profile(parser, options, toolchain)
+
+                    if mcu.is_PSA_secure_target and \
+                            not is_relative_to_root(options.source_dir):
+                        options.source_dir = ROOT
+
                     if options.source_dir:
                         lib_build_res = build_library(
                             options.source_dir, options.build_dir, mcu, toolchain,

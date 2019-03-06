@@ -17,10 +17,17 @@
  *  This file is part of mbed TLS (https://tls.mbed.org)
  */
 
-#if defined(DEVICE_TRNG)
+#if DEVICE_TRNG
 #define MBEDTLS_ENTROPY_HARDWARE_ALT
 #endif
 
 #if defined(MBEDTLS_CONFIG_HW_SUPPORT)
 #include "mbedtls_device.h"
 #endif
+
+/*
+ * MBEDTLS_ERR_PLATFORM_HW_FAILED is deprecated and should not be used.
+ */
+#define MBEDTLS_ERR_PLATFORM_HW_FAILED       -0x0080
+
+#define MBEDTLS_ERR_PLATFORM_HW_ACCEL_FAILED -0x0070

@@ -27,7 +27,7 @@
   */
 
 #include "stm32l0xx.h"
-#include "mbed_assert.h"
+#include "mbed_error.h"
 
 /*!< Uncomment the following line if you need to relocate your vector Table in
      Internal SRAM. */
@@ -42,7 +42,7 @@ uint8_t SetSysClock_PLL_HSI(void);
   * @param  None
   * @retval None
   */
-void SystemInit (void)
+void SystemInit(void)
 {
     /*!< Set MSION bit */
     RCC->CR |= (uint32_t)0x00000100U;
@@ -84,10 +84,9 @@ void SystemInit (void)
   */
 void SetSysClock(void)
 {
-    if (SetSysClock_PLL_HSI() == 0)
-    {
-        while(1) {
-            MBED_ASSERT(1);
+    if (SetSysClock_PLL_HSI() == 0) {
+        {
+            error("SetSysClock failed\n");
         }
     }
 
