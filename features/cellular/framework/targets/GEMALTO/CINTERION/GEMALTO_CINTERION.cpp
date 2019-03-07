@@ -53,7 +53,7 @@ nsapi_error_t GEMALTO_CINTERION::init_module()
     if (!information) {
         return NSAPI_ERROR_NO_MEMORY;
     }
-    char model[sizeof("ELS61") + 1]; // sizeof need to be long enough to hold just the model text
+    char model[sizeof("EHS5-E") + 1]; // sizeof need to be long enough to hold just the model text
     nsapi_error_t ret = information->get_model(model, sizeof(model));
     close_information();
     if (ret != NSAPI_ERROR_OK) {
@@ -67,6 +67,8 @@ nsapi_error_t GEMALTO_CINTERION::init_module()
         init_module_bgs2();
     } else if (memcmp(model, "EMS31", sizeof("EMS31") - 1) == 0) {
         init_module_ems31();
+    } else if (memcmp(model, "EHS5-E", sizeof("EHS5-E") - 1) == 0) {
+        init_module_ehs5e();
     } else {
         tr_error("Cinterion model unsupported %s", model);
         return NSAPI_ERROR_UNSUPPORTED;
@@ -116,4 +118,14 @@ void GEMALTO_CINTERION::init_module_ems31()
     };
     AT_CellularBase::set_unsupported_features(unsupported_features);
     _module = ModuleEMS31;
+}
+
+void GEMALTO_CINTERION::init_module_ehs5e()
+{
+    static const AT_CellularBase::SupportedFeature unsupported_features[] =  {
+        AT_CellularBase::AT_CGSN_WITH_TYPE,
+        AT_CellularBase::SUPPORTED_FEATURE_END_MARK
+    };
+    AT_CellularBase::set_unsupported_features(unsupported_features);
+    _module = ModuleEHS5E;
 }

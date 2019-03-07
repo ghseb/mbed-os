@@ -25,6 +25,7 @@ class GEMALTO_CINTERION_CellularContext: public AT_CellularContext {
 public:
     GEMALTO_CINTERION_CellularContext(ATHandler &at, CellularDevice *device, const char *apn);
     virtual ~GEMALTO_CINTERION_CellularContext();
+    virtual nsapi_error_t do_user_authentication();
 
 protected:
 #if !NSAPI_PPP_AVAILABLE

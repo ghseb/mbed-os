@@ -24,7 +24,7 @@ namespace mbed {
 
 class GEMALTO_CINTERION_CellularStack : public AT_CellularStack {
 public:
-    GEMALTO_CINTERION_CellularStack(ATHandler &atHandler, const char *apn, int cid, nsapi_ip_stack_t stack_type);
+    GEMALTO_CINTERION_CellularStack(ATHandler &atHandler, const char *apn, const char *user, const char *password, int cid, nsapi_ip_stack_t stack_type);
     virtual ~GEMALTO_CINTERION_CellularStack();
 
 protected:
@@ -67,6 +67,8 @@ private:
 
     // connection profile configuration needs Access Point Name
     const char *_apn;
+    const char *_user;
+    const char *_password;
 };
 
 } // namespace mbed

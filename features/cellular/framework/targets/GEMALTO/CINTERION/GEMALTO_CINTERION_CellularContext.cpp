@@ -29,11 +29,34 @@ GEMALTO_CINTERION_CellularContext::~GEMALTO_CINTERION_CellularContext()
 {
 }
 
+nsapi_error_t GEMALTO_CINTERION_CellularContext::do_user_authentication()
+{
+    if(GEMALTO_CINTERION::get_module() == GEMALTO_CINTERION::ModuleEHS5E) {
+        if (_pwd && _uname) {
+            _at.cmd_start("AT^SGAUTH=");
+            _at.write_int(_cid);
+            _at.write_int(_authentication_type);
+            _at.write_string(_uname);
+            _at.write_string(_pwd);
+            _at.cmd_stop_read_resp();
+            if (_at.get_last_error() != NSAPI_ERROR_OK) {
+                return NSAPI_ERROR_AUTH_FAILURE;
+            }
+        }
+
+        return NSAPI_ERROR_OK;
+    }
+    else
+    {
+        return AT_CellularContext::do_user_authentication();
+    }
+}
+
 #if !NSAPI_PPP_AVAILABLE
 NetworkStack *GEMALTO_CINTERION_CellularContext::get_stack()
 {
     if (!_stack) {
-        _stack = new GEMALTO_CINTERION_CellularStack(_at, _apn, _cid, _ip_stack_type);
+        _stack = new GEMALTO_CINTERION_CellularStack(_at, _apn, _uname, _pwd, _cid, _ip_stack_type);
     }
     return _stack;
 }

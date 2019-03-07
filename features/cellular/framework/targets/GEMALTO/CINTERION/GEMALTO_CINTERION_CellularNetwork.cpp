@@ -33,7 +33,8 @@ AT_CellularNetwork::RegistrationMode GEMALTO_CINTERION_CellularNetwork::has_regi
     if (GEMALTO_CINTERION::get_module() == GEMALTO_CINTERION::ModuleEMS31) {
         return (reg_type == C_EREG) ? RegistrationModeLAC : RegistrationModeDisable;
     }
-    if (GEMALTO_CINTERION::get_module() == GEMALTO_CINTERION::ModuleBGS2) {
+    if (GEMALTO_CINTERION::get_module() == GEMALTO_CINTERION::ModuleBGS2 ||
+            GEMALTO_CINTERION::get_module() == GEMALTO_CINTERION::ModuleEHS5E) {
         if (reg_type == C_GREG) {
             return RegistrationModeEnable;
         }
